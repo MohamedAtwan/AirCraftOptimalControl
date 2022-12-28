@@ -213,4 +213,6 @@ class Dynamics:
 		fu[1,5] = dt/J
 		
 		fu[0,7] = xxp[7] = dt * ((1/m) * (rho*dVd_u[0,0]*S*Cla*alpha +(1/V)*alpha_dot*np.cos(alpha))- (dVd_u[0,0]/V)*xx[7,0])
-		fu[1,7] = xxp[7] = dt * ((1/m) * (rho*dVd_u[1,0]*S*Cla*alpha - (dVd_u[1,0]/V)*xx[7,0])
+		fu[1,7] = xxp[7] = dt * ((1/m) * (rho*dVd_u[1,0]*S*Cla*alpha - (dVd_u[1,0]/V)*xx[7,0]))
+
+	return xxp, fx, fu
