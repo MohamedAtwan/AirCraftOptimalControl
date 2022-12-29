@@ -26,6 +26,9 @@ class Dynamics:
 			Outputs: V --> velocity value,  dV_x --> gradients of the velocity w.r.t the system states
 		'''
 
+		# Parameters
+		ns = self.ns
+
 		# Velocity value
 		V = (xx[1,0]+xx[3,0])/(np.cos(xx[6,0])-np.sin(xx[6,0]))
 
@@ -46,6 +49,7 @@ class Dynamics:
 		'''
 		
 		# parameters
+		ns = self.ns
 		rho = self.rho
 		S = self.S
 		Cd0 = self.cd0
@@ -53,7 +57,7 @@ class Dynamics:
 		V, dv_x = self.vel_vector(xx)
 		alpha = xx[4,0]-xx[6,0]
 
-		# Drag force
+		# Drag force value
 		D = 0.5 * rho * (V**2) * S *(Cd0 + Cda * alpha**2)
 
 		# Gradients
@@ -73,11 +77,14 @@ class Dynamics:
 		'''
 
 		# parameters
+		ns = self.ns
 		rho = self.rho
+		Cla = self.cla
+		S = self.S
 		V, dV_x = self.vel_vector(xx)
 		alpha = xx[4,0]-xx[6,0]
 
-		# Lift Force
+		# Lift Force value
 		L = 0.5*rho*V**2*S*Cla*alpha
 
 		# Gradients
@@ -99,6 +106,7 @@ class Dynamics:
 		'''
 
 		# parameters
+		ns = self.ns
 		m = self.m
 		g = self.g 
 		D, dD_x = self.dragForce(xx)
@@ -125,10 +133,12 @@ class Dynamics:
 			Inputs: xx --> system states,  uu--> system Inputs
 			Outputs: D --> Drag force value,  dD_x --> gradients of the drag force w.r.t the system states
 		'''
+		ns, ni = self.ns, self.ni
 		xx = xx[:,None]
   		uu = uu[:,None]
 
   		# parameters
+  		J = = self.J
   		V, dV_x = self.vel_vector(xx)
   		Vd, dVd_x, dVd_u = self.acc_vector(xx,uu)
   		# L,dL_x = self.liftForce(xx,uu)
