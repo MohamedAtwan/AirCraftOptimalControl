@@ -18,7 +18,7 @@ class Dynamics:
 		self.ns = 8
 		self.ni = 2
 		self.dt = 1e-3
-		self.QQt = np.ones((self.ns,self.ns))
+		self.QQt = np.eye((self.ns,self.ns))
 		self.QQt[1,1] = 10
 		self.QQt[3,3] = 10
 		self.QQt[4,4] = 100
@@ -34,7 +34,7 @@ class Dynamics:
 			Outputs: V --> velocity value,  dV_x --> gradients of the velocity w.r.t the system states
 		'''
 
-		xx = xx[:,None]
+		xx = xx.reshape(-1,1)
 
 		# Parameters
 		ns = self.ns
@@ -57,7 +57,7 @@ class Dynamics:
 			Inputs: xx --> system states
 			Outputs: D --> Drag force value,  dD_x --> gradients of the drag force w.r.t the system states
 		'''
-		xx = xx[:,None]
+		xx = xx.reshape(-1,1)
 		# parameters
 		ns = self.ns
 		rho = self.rho
@@ -66,7 +66,6 @@ class Dynamics:
 		Cda = self.cda
 		V, dV_x = self.vel_vector(xx)
 		alpha = xx[4,0]-xx[6,0]
-
 		# Drag force value
 		D = 0.5 * rho * (V**2) * S *(Cd0 + Cda * alpha**2)
 
@@ -85,7 +84,7 @@ class Dynamics:
 			Inputs: xx --> system states
 			Outputs: D --> Lift force value,  dD_x --> gradients of the lift force w.r.t the system states
 		'''
-		xx = xx[:,None]
+		xx = xx.reshape(-1,1)
 		# parameters
 		ns = self.ns
 		rho = self.rho
@@ -114,8 +113,8 @@ class Dynamics:
 			Inputs: xx --> system states,  uu--> system Inputs
 			Outputs: D --> Drag force value,  dD_x --> gradients of the drag force w.r.t the system states
 		'''
-		xx = xx[:,None]
-		uu = uu[:,None]
+		xx = xx.reshape(-1,1)
+		uu = uu.reshape(-1,1)
 
 		# parameters
 		ni = self.ni
@@ -147,8 +146,8 @@ class Dynamics:
 			Outputs: D --> Drag force value,  dD_x --> gradients of the drag force w.r.t the system states
 		'''
 		ns, ni = self.ns, self.ni
-		xx = xx[:,None]
-		uu = uu[:,None]
+		xx = xx.reshape(-1,1)
+		uu = uu.reshape(-1,1)
 
 		# parameters
 		m = self.m
@@ -161,6 +160,8 @@ class Dynamics:
 		g = self.g
 		dt = self.dt
 
+		V = 2.0
+		dV_x = np.zeros((8,1))
 		V, dV_x = self.vel_vector(xx)
 		Vd, dVd_x, dVd_u = self.acc_vector(xx,uu)
 		# L,dL_x = self.liftForce(xx,uu)
@@ -171,7 +172,7 @@ class Dynamics:
 		alpha_dot = xx[5,0]-xx[7,0]
 		grad_alpha_dot = np.transpose(np.array([[0,0,0,0,0,1,0,-1]]))
 
-		xxp = np.zeros((ns,))
+		xxp = np.zeros((ns,),dtype = np.float32)
 		xxp[0] = xx[0,0] + dt * xx[1,0]
 		xxp[1] = xx[1,0] + dt * (Vd*np.cos(xx[6,0])-V*xx[7,0]*np.sin(xx[6,0]))
 
@@ -182,9 +183,10 @@ class Dynamics:
 		xxp[5] = xx[5,0] + dt * (uu[1,0]/J)
 
 		xxp[6] = xx[6,0] + dt * xx[7,0]
-		# xxp[7] = xx[7,0] + dt *((1/(m*V))*dL_x.T@np.transpose(np.atleast2d(xxp))+(g/V)*xx[7,0]*np.sin(x[6,0])+(uu[0,0]/(m*V))*alpha_dot*np.cos(alpha)-(Vd/V)*xx[7,0])
-		xxp[7] = xx[7,0] + dt * ((1/m) * (rho*Vd*S*Cla*alpha + 0.5*rho*V*S*Cla*alpha_dot+(uu[0,0]/V)*alpha_dot*np.cos(alpha))+(g/V)*xx[7,0]*np.sin(xx[6,0]) - (Vd/V)*xx[7,0])
 		
+		
+		xxp[7] = xx[7,0] + dt * ((1/m) * (rho*Vd*S*Cla*alpha + 0.5*rho*V*S*Cla*alpha_dot+(uu[0,0]/V)*alpha_dot*np.cos(alpha))+(g/V)*xx[7,0]*np.sin(xx[6,0]) - (Vd/V)*xx[7,0])
+
 		# Gradients
 		fx = np.zeros((ns, ns))
 		fu = np.zeros((ni, ns))
@@ -244,8 +246,8 @@ class Dynamics:
 		
 		fu[1,5] = dt/J
 		
-		fu[0,7] = xxp[7] = dt * ((1/m) * (rho*dVd_u[0,0]*S*Cla*alpha +(1/V)*alpha_dot*np.cos(alpha))- (dVd_u[0,0]/V)*xx[7,0])
-		fu[1,7] = xxp[7] = dt * ((1/m) * (rho*dVd_u[1,0]*S*Cla*alpha - (dVd_u[1,0]/V)*xx[7,0]))
+		fu[0,7] = dt * ((1/m) * (rho*dVd_u[0,0]*S*Cla*alpha +(1/V)*alpha_dot*np.cos(alpha))- (dVd_u[0,0]/V)*xx[7,0])
+		fu[1,7] = dt * ((1/m) * (rho*dVd_u[1,0]*S*Cla*alpha - (dVd_u[1,0]/V)*xx[7,0]))
 
 		return xxp, fx, fu
 	def stagecost(self,xx,uu, xx_ref, uu_ref):
@@ -273,11 +275,11 @@ class Dynamics:
 
 		QQt = self.QQt
 		RRt = self.RRt
-		xx = xx[:,None]
-		uu = uu[:,None]
+		xx = xx.reshape(-1,1)
+		uu = uu.reshape(-1,1)
 
-		xx_ref = xx_ref[:,None]
-		uu_ref = uu_ref[:,None]
+		xx_ref = xx_ref.reshape(-1,1)
+		uu_ref = uu_ref.reshape(-1,1)
 
 		ll = 0.5*(xx - xx_ref).T@QQt@(xx - xx_ref) + 0.5*(uu - uu_ref).T@RRt@(uu - uu_ref)
 
