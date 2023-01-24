@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 # import os
 
-from aircraft import Dynamics
+from aircraft_simplified import Dynamics
 
 
 # Allow Ctrl-C to work despite plotting
@@ -22,6 +22,7 @@ plt.rcParams["figure.figsize"] = (10,8)
 plt.rcParams.update({'font.size': 22})
 
 dyn = Dynamics()
+# np.seterr('raise')
 
 #######################################
 # Algorithm parameters
@@ -29,7 +30,7 @@ dyn = Dynamics()
 
 # max_iters = int(2e2)
 max_iters = int(200)
-stepsize = 1e-3
+stepsize = 1e-1
 
 term_cond = 1e-6
 
@@ -37,15 +38,16 @@ term_cond = 1e-6
 # Trajectory parameters
 #######################################
 
-tf = 1 # final time in seconds
-
-dt = dyn.dt   # get discretization step from dynamics
+tf = 0.1 # final time in seconds
+dt = 1e-4
+dyn.dt = dt
+# dt = dyn.dt   # get discretization step from dynamics
 ns = dyn.ns
 ni = dyn.ni
 
 TT = int(tf/dt) # discrete-time samples
 
-NN = int(1e3) #number of points of the desired trajectory
+# NN = int(1e3) #number of points of the desired trajectory
 ######################################
 # Define the desired velocity profile
 ######################################
@@ -89,12 +91,12 @@ def reference_position(tt, p0, pT, T):
 ######################################
 # Reference curve
 ######################################
-tt = np.linspace(0,TT,NN)
-p0 = 5 # ok for x and z
-pT = 10 # ok for x and z
+tt = np.linspace(0,tf,TT)
+p0 = 250 # ok for x and z
+pT = 500 # ok for x and z
 
-theta0 = np.deg2rad(0)
-thetaT = np.deg2rad(30)
+theta0 = np.deg2rad(48)
+thetaT = np.deg2rad(40)
 
 gamma0 = np.deg2rad(0)
 gammaT = np.deg2rad(20)
@@ -102,7 +104,6 @@ gammaT = np.deg2rad(20)
 px_ref, vx_ref = reference_position(tt, p0, pT, TT)
 py_ref, vy_ref = reference_position(tt, p0, pT, TT)
 theta_ref, thetad_ref = reference_position(tt, theta0, thetaT, TT)
-gamma_ref, gammad_ref = reference_position(tt, gamma0, gammaT, TT)
 
 
 xx_ref = np.zeros((ns, TT))
@@ -110,36 +111,31 @@ uu_ref = np.zeros((ni, TT))
 
 xx_ref[0] = px_ref
 xx_ref[1] = vx_ref
-xx_ref[2]=py_ref
+xx_ref[2] = py_ref
 xx_ref[3] = vy_ref
 xx_ref[4] = theta_ref
 xx_ref[5] = thetad_ref
-xx_ref[6] = gamma_ref
-xx_ref[7] = gammad_ref
 
-x0_in = np.zeros((ns, TT))
-u0 = np.zeros((ni, TT))
-u0[0, :] = np.ones((1, TT))*10
-u0[1, :] = np.ones((1, TT))*10
-v = np.ones(1000)*25
-x0_in[0, :] = np.ones((1, TT))*5
-x0_in[1, :] = np.ones((1, TT))*5
-x0_in[2, :] = np.ones((1, TT))*5
-x0_in[3, :] = np.ones((1, TT))*5
-# v = np.sqrt(x0[1, :]**2+x0[3, :]**2)
-x0_in[4, :] = np.ones((1, TT))*0
-x0_in[5, :] = np.ones((1, TT))*0
-x0_in[6, :] = np.arctan2(-x0_in[3], x0_in[1])
-x0_in[7, :] = (dyn.liftForce(x0_in[:,0])[0]-np.ones((1, TT))*dyn.m*dyn.g)/(np.ones((1, TT))*dyn.m*v)
+# x0_in = np.zeros((ns, TT))
+# u0 = np.zeros((ni, TT))
+# u0[0, :] = np.ones((1, TT))*10
+# u0[1, :] = np.ones((1, TT))*10
+# x0_in[0, :] = np.ones((1, TT))*5
+# x0_in[1, :] = np.ones((1, TT))*5
+# x0_in[2, :] = np.ones((1, TT))*5
+# x0_in[3, :] = np.ones((1, TT))*5
+# # v = np.sqrt(x0[1, :]**2+x0[3, :]**2)
+# x0_in[4, :] = np.ones((1, TT))*0
+# x0_in[5, :] = np.ones((1, TT))*0
 
-x0_k = x0_in[:, :]
-x0 = x0_in[:, 0]
+# x0_k = x0_in[:, :]
+# x0 = x0_in[:, 0]
 
 # for tt in range(TT):
 #   uu_ref[0,tt] = (-dyn.liftForce(xx_ref[:,tt])[0] + dyn.m*dyn.g*np.cos(xx_ref[6,tt]))/np.sin(xx_ref[4,tt]-xx_ref[6,tt])
 
 
-# x0 = xx_ref[:,0]
+x0 = xx_ref[:,0]
 
 ######################################
 # quasi static trajectory
@@ -151,9 +147,9 @@ x0 = x0_in[:, 0]
 
 xx = np.zeros((ns, TT, max_iters))   # state seq.
 uu = np.zeros((ni, TT, max_iters))   # input seq.
-xx[1,:,0] = 1e-2
-xx[3,:,0] = 1e-2
-xx[3,:,0] = 1e-2
+xx[1,:,0] = 120.0*np.ones((TT,))
+xx[3,:,0] = 40.0*np.zeros((TT,))
+xx[4,:,0] = 48.52*np.pi/180.0 *np.ones((TT,))
 
 lmbd = np.zeros((ns, TT, max_iters)) # lambdas - costate seq.
 
@@ -169,7 +165,7 @@ descent = np.zeros(max_iters) # collect descent direction
 print('-*-*-*-*-*-')
 
 kk = 0
-xx[:,:, 0] = x0_k
+# xx[:,:, 0] = x0_k
 for kk in range(max_iters-1):
 
   JJ[kk] = 0
