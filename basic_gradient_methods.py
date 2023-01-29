@@ -9,6 +9,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
+from math import log
 # import os
 
 from aircraft_simplified import Dynamics
@@ -29,8 +30,20 @@ dyn = Dynamics()
 #######################################
 
 # max_iters = int(2e2)
-max_iters = int(200)
-stepsize = 1e-1
+# max_iters = int(1200)
+# stepsize = 1e-1
+max_iters = int(2e3)
+stepsize_0 = 1e-1
+
+# ARMIJO PARAMETERS
+cc = 0.5
+# beta = 0.5
+beta = 0.7
+armijo_maxiters = 20 # number of Armijo iterations
+
+term_cond = 1e-6
+
+visu_armijo = False
 
 term_cond = 1e-6
 
@@ -38,8 +51,8 @@ term_cond = 1e-6
 # Trajectory parameters
 #######################################
 
-tf = 0.1 # final time in seconds
-dt = 1e-4
+tf = 1 # final time in seconds
+dt = 1e-3
 dyn.dt = dt
 # dt = dyn.dt   # get discretization step from dynamics
 ns = dyn.ns
@@ -52,7 +65,7 @@ TT = int(tf/dt) # discrete-time samples
 # Define the desired velocity profile
 ######################################
 
-def sigmoid_fcn(tt):
+def sigmoid_fcn(tt,slope):
   """
     Sigmoid function
 
@@ -61,14 +74,14 @@ def sigmoid_fcn(tt):
     - ds = d/dx s(t)
   """
 
-  ss = 1/(1 + np.exp(0.02*(-tt)))
+  ss = 1/(1 + np.exp((-tt)*slope))
 
   ds = ss*(1-ss)
 
   return ss, ds
 
 
-def reference_position(tt, p0, pT, T):
+def reference_position(tt, p0, pT):
   """
   Returns the desired position and velocity for a smooth transition
 
@@ -82,9 +95,9 @@ def reference_position(tt, p0, pT, T):
     - position p(t) = p0 + \sigma(t - T/2)*(pT - p0)
     - velocity v(t) = d/dt p(t) = \sigma'(t - T/2)*(pT - p0)
   """
-
-  pp = p0 + sigmoid_fcn(tt - T/2)[0]*(pT - p0)
-  vv = p0 + sigmoid_fcn(tt - T/2)[1]*(pT - p0)
+  slope = tt.shape[0]*0.05
+  pp = p0+sigmoid_fcn(tt - tt[-1]/2,slope)[0]*(pT - p0)
+  vv = sigmoid_fcn(tt - tt[-1]/2,slope)[1]*(pT - p0)
 
   return pp, vv
 
@@ -92,48 +105,15 @@ def reference_position(tt, p0, pT, T):
 # Reference curve
 ######################################
 tt = np.linspace(0,tf,TT)
-p0 = 250 # ok for x and z
-pT = 500 # ok for x and z
-
-theta0 = np.deg2rad(48)
-thetaT = np.deg2rad(40)
-
-gamma0 = np.deg2rad(0)
-gammaT = np.deg2rad(20)
-
-px_ref, vx_ref = reference_position(tt, p0, pT, TT)
-py_ref, vy_ref = reference_position(tt, p0, pT, TT)
-theta_ref, thetad_ref = reference_position(tt, theta0, thetaT, TT)
-
 
 xx_ref = np.zeros((ns, TT))
 uu_ref = np.zeros((ni, TT))
 
-xx_ref[0] = px_ref
-xx_ref[1] = vx_ref
-xx_ref[2] = py_ref
-xx_ref[3] = vy_ref
-xx_ref[4] = theta_ref
-xx_ref[5] = thetad_ref
-
-# x0_in = np.zeros((ns, TT))
-# u0 = np.zeros((ni, TT))
-# u0[0, :] = np.ones((1, TT))*10
-# u0[1, :] = np.ones((1, TT))*10
-# x0_in[0, :] = np.ones((1, TT))*5
-# x0_in[1, :] = np.ones((1, TT))*5
-# x0_in[2, :] = np.ones((1, TT))*5
-# x0_in[3, :] = np.ones((1, TT))*5
-# # v = np.sqrt(x0[1, :]**2+x0[3, :]**2)
-# x0_in[4, :] = np.ones((1, TT))*0
-# x0_in[5, :] = np.ones((1, TT))*0
-
-# x0_k = x0_in[:, :]
-# x0 = x0_in[:, 0]
-
-# for tt in range(TT):
-#   uu_ref[0,tt] = (-dyn.liftForce(xx_ref[:,tt])[0] + dyn.m*dyn.g*np.cos(xx_ref[6,tt]))/np.sin(xx_ref[4,tt]-xx_ref[6,tt])
-
+# Get the two equillibrium point corresponding to some (theta, x, z) values
+# dyn.get_equilibrium(Theta, X, Z)
+p1, p2 =  dyn.get_equilibrium(20*np.pi/180,0,200), dyn.get_equilibrium(20*np.pi/180,10,210)
+for i in range(6):
+  xx_ref[i,:TT//2], xx_ref[i,TT//2:] = p1[i]*np.ones((TT//2)), p2[i]*np.ones((TT//2))
 
 x0 = xx_ref[:,0]
 
@@ -147,9 +127,12 @@ x0 = xx_ref[:,0]
 
 xx = np.zeros((ns, TT, max_iters))   # state seq.
 uu = np.zeros((ni, TT, max_iters))   # input seq.
-xx[1,:,0] = 120.0*np.ones((TT,))
-xx[3,:,0] = 40.0*np.zeros((TT,))
-xx[4,:,0] = 48.52*np.pi/180.0 *np.ones((TT,))
+
+# define some initial trajectory at k = 0 by forward integrating the initial value at equillibrium
+xx[:,0,0] = x0.flatten()
+
+for i in range(TT-1):
+  xx[:,i+1,0] = dyn.step(xx[:,i,0],uu)[0].flatten()
 
 lmbd = np.zeros((ns, TT, max_iters)) # lambdas - costate seq.
 
@@ -192,6 +175,7 @@ for kk in range(max_iters-1):
 
     AA = fx.T
     BB = fu.T
+    # print(BB)
 
 
     lmbd_temp = AA.T@lmbd[:,tt+1,kk][:,None] + aa       # costate equation
@@ -201,9 +185,106 @@ for kk in range(max_iters-1):
     lmbd[:,tt,kk] = lmbd_temp.squeeze()
     deltau[:,tt,kk] = deltau_temp.squeeze()
 
-    descent[kk] += deltau[:,tt,kk].T@deltau[:,tt,kk]
+    descent[kk] += (deltau[:,tt,kk].T@deltau[:,tt,kk])
 
+  ##################################
+  # Stepsize selection - ARMIJO
+  ##################################
+
+
+  stepsizes = []  # list of stepsizes
+  costs_armijo = []
+
+  stepsize = stepsize_0
+
+  for ii in range(armijo_maxiters):
+
+    # temp solution update
+
+    xx_temp = np.zeros((ns,TT))
+    uu_temp = np.zeros((ni,TT))
+
+    xx_temp[:,0] = x0
+
+    for tt in range(TT-1):
+      uu_temp[:,tt] = uu[:,tt,kk] + stepsize*deltau[:,tt,kk]
+      xx_temp[:,tt+1] = dyn.step(xx_temp[:,tt], uu_temp[:,tt])[0]
+
+    # temp cost calculation
+    JJ_temp = 0
+
+    for tt in range(TT-1):
+      temp_cost = dyn.stagecost(xx_temp[:,tt], uu_temp[:,tt], xx_ref[:,tt], uu_ref[:,tt])[0]
+      JJ_temp += temp_cost
+
+    temp_cost = dyn.termcost(xx_temp[:,-1], xx_ref[:,-1])[0]
+    JJ_temp += temp_cost
+
+    stepsizes.append(stepsize)      # save the stepsize
+    costs_armijo.append(JJ_temp)    # save the cost associated to the stepsize
+
+    if JJ_temp > JJ[kk] - cc*stepsize*descent[kk]:
+        # update the stepsize
+        stepsize = beta*stepsize
     
+    else:
+        print('Armijo stepsize = {}'.format(stepsize))
+        break
+
+
+  ############################
+  # Armijo plot
+  ############################
+
+  if visu_armijo:
+
+    steps = np.linspace(0,1,int(1e1))
+    costs = np.zeros(len(steps))
+
+    for ii in range(len(steps)):
+
+      step = steps[ii]
+
+      # temp solution update
+
+      xx_temp = np.zeros((ns,TT))
+      uu_temp = np.zeros((ni,TT))
+
+      xx_temp[:,0] = x0
+
+      for tt in range(TT-1):
+        uu_temp[:,tt] = uu[:,tt,kk] + step*deltau[:,tt,kk]
+        xx_temp[:,tt+1] = dyn.step(xx_temp[:,tt], uu_temp[:,tt])[0]
+
+      # temp cost calculation
+      JJ_temp = 0
+
+      for tt in range(TT-1):
+        temp_cost = dyn.stagecost(xx_temp[:,tt], uu_temp[:,tt], xx_ref[:,tt], uu_ref[:,tt])[0]
+        JJ_temp += temp_cost
+
+      temp_cost = dyn.termcost(xx_temp[:,-1], xx_ref[:,-1])[0]
+      JJ_temp += temp_cost
+
+      costs[ii] = JJ_temp
+
+
+    plt.figure(1)
+    plt.clf()
+
+    plt.plot(steps, costs, color='g', label='$J(\\mathbf{u}^k - stepsize*d^k)$')
+    plt.plot(steps, JJ[kk] - descent[kk]*steps, color='r', label='$J(\\mathbf{u}^k) - stepsize*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
+    plt.plot(steps, JJ[kk] - cc*descent[kk]*steps, color='g', linestyle='dashed', label='$J(\\mathbf{u}^k) - stepsize*c*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
+
+    plt.scatter(stepsizes, costs_armijo, marker='*') # plot the tested stepsize
+
+    plt.grid()
+    plt.xlabel('stepsize')
+    plt.legend()
+    plt.draw()
+
+    plt.show()
+
   ############################
   # Update the current solution
   ############################
@@ -221,10 +302,12 @@ for kk in range(max_iters-1):
   xx[:,:,kk+1] = xx_temp
   uu[:,:,kk+1] = uu_temp
 
+  rr = max((max_iters-1-(max_iters-1)//2)/(max_iters-1),0)
+  dyn.update_epsilon(rr)
+  # print(rr)
   ############################
   # Termination condition
   ############################
-
   print('Iter = {}\t Descent = {}\t Cost = {}'.format(kk,descent[kk], JJ[kk]))
 
   if descent[kk] <= term_cond:
@@ -269,30 +352,42 @@ tt_hor = np.linspace(0,tf,TT)
 
 # plt.figure()
 
-fig, axs = plt.subplots(4, 1, sharex='all')
+labels = {0:'X', 1:'X_dot', 2: 'Z', 3: 'Z_dot', 4:'Theta', 5:'Theta_dot'}
+for j in [0,2,4]:
+  # fig, axs = plt.subplots(2, 1, sharex='all')
+  plt.figure()
+  for i in range(2):
+    plt.subplot(211+i)
+    plt.plot(tt_hor, xx_star[i+j,:], linewidth=2)
+    plt.plot(tt_hor, xx_ref[i+j,:], 'g--', linewidth=2)
+    plt.grid()
+    plt.ylabel('{}'.format(labels[i+j]))
+    # axs[i].plot(tt_hor, xx_star[i+j,:], linewidth=2)
+    # axs[i].plot(tt_hor, xx_ref[i+j,:], 'g--', linewidth=2)
+    # axs[i].grid()
+    # axs[i].set_ylabel('$state_{}$'.format(labels[i+j]))
 
 
-for i in range(4):
-  axs[i].plot(tt_hor, xx_star[i,:], linewidth=2)
-  axs[i].plot(tt_hor, xx_ref[i,:], 'g--', linewidth=2)
-  axs[i].grid()
-  axs[i].set_ylabel('$x_{}$'.format(i))
+# fig, axs = plt.subplots(2, 1, sharex='all')
 
+# for i in range(2):
+#   axs[i].plot(tt_hor, xx_star[i+2,:], linewidth=2)
+#   axs[i].plot(tt_hor, xx_ref[i+2,:], 'g--', linewidth=2)
+#   axs[i].grid()
+#   axs[i].set_ylabel('$x_{}$'.format(i))
 
-fig, axs = plt.subplots(4, 1, sharex='all')
-
-for i in range(4):
-  axs[i].plot(tt_hor, xx_star[i+4,:], linewidth=2)
-  axs[i].plot(tt_hor, xx_ref[i+4,:], 'g--', linewidth=2)
-  axs[i].grid()
-  axs[i].set_ylabel('$x_{}$'.format(i))
-
-fig, axs = plt.subplots(2, 1, sharex='all')
+# fig, axs = plt.subplots(2, 1, sharex='all')
+plt.figure()
 for i in range(2):
-  axs[i].plot(tt_hor, uu_star[i,:], linewidth=2)
-  axs[i].plot(tt_hor, uu_ref[i,:], 'g--', linewidth=2)
-  axs[i].grid()
-  axs[i].set_ylabel('$x_{}$'.format(i))
+  plt.subplot(211+i)
+  plt.plot(tt_hor, uu_star[i,:], linewidth=2)
+  plt.plot(tt_hor, uu_ref[i,:], 'g--', linewidth=2)
+  plt.grid()
+  plt.ylabel('U_{}'.format(i))
+  # axs[i].plot(tt_hor, uu_star[i,:], linewidth=2)
+  # axs[i].plot(tt_hor, uu_ref[i,:], 'g--', linewidth=2)
+  # axs[i].grid()
+  # axs[i].set_ylabel('$U_{}$'.format(i+1))
 
 # axs[1].plot(tt_hor, xx_star[1,:], linewidth=2)
 # axs[1].plot(tt_hor, xx_ref[1,:], 'g--', linewidth=2)

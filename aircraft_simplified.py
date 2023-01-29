@@ -1,5 +1,16 @@
 import numpy as np
+from math import log
 from scipy.optimize import fsolve, least_squares, minimize, NonlinearConstraint
+
+def round_theta(th):
+	''' Some recursive algorithm to round theta to be between zero and 2pi'''
+	if abs(th) < np.pi*2:
+		return th
+	else:
+		if th < 0:
+			return round_theta(th + np.pi*2)
+		else:
+			return round_theta(th - np.pi*2)
 
 class Dynamics:
 	def __init__(self):
@@ -20,21 +31,52 @@ class Dynamics:
 		self.ni = 2
 		self.dt = 1e-3
 		self.QQt = np.eye(self.ns)
-		self.QQt[0,0] = 10
-		self.QQt[2,2] = 1000
-		self.QQt[4,4] = 10
-		self.RRt = 1e-1*np.eye(self.ni)
-		self.QQT = 10*self.QQt
+		self.QQt[0,0] = 1
+		self.QQt[2,2] = 100
+		# self.QQt[4,4] = 1e-1
+		self.RRt = 1e-2*np.eye(self.ni)
+		self.QQT = 1*self.QQt
 		self.Temp = None
+		self.eps_init = 1.5
+		self.eps_end = 0.1
+		self.speedLimit = 480
+		self.epsilon = self.eps_init
+
+	def get_equilibrium(self,theta,x,z):
+		''' Calculate the equillibrium corresoponding to some (Theta, X, Z) values
+			Inputs: theta, X, V
+			outputs: State values vector "xx"
+		'''
+		m = self.m
+		g = self.g
+		rho = self.rho
+		Cla = self.cla
+		S = self.S
+		xx = np.zeros((self.ns))
+		xx[0] = x
+		xx[1] = ((2*g)/(rho*S*Cla*theta))**0.5
+		xx[2] = z
+		xx[3] = 0 
+		xx[4] = theta
+		xx[5] = 0
+		return xx
+
+
 
 	def gamma_angle(self,xx):
+		'''
+			This function calculates the gamma angle value and the gradients of the gamma angle w.r.t. the system states
+			Inputs: xx --> states
+			Outputs: gamma --> gamma angle value,  d_gamma --> gradients of the gamma angle w.r.t the system states
+		'''
+		xx = xx.reshape(-1,1)
 		# print(xx[1,0])
 		ns = self.ns
 		gamma = np.math.atan2(-xx[3,0],xx[1,0])
 		d_gamma = np.zeros((ns,1))
-		val = -xx[3,0]/xx[1,0]
-		d_gamma[1,0] = (1/(1+val**2))*(xx[3,0]/xx[1,0]**2)
-		d_gamma[3,0] = (1/(1+val**2))*(-1/xx[1,0])
+		val = (-xx[3,0]/xx[1,0])**2
+		d_gamma[1,0] = (1*(1+val)**-1)*(2*xx[3,0]*xx[1,0]**-2)
+		d_gamma[3,0] = (1*(1+val)**-1)*((-2*xx[3,0]**2)*xx[1,0]**-3)
 		return gamma, d_gamma
 
 
@@ -49,25 +91,12 @@ class Dynamics:
 
 		# Parameters
 		ns = self.ns
-		gamma, _ = self.gamma_angle(xx)
+		gamma, d_gamma = self.gamma_angle(xx)
 		dV_x = np.zeros((ns,1))
-
-		if np.cos(gamma)==np.sin(gamma):
-			# Velocity value
-			if np.cos(gamma) == 0:
-				V = xx[3,0]
-				# Gradients
-				dV_x[3,0] = 1
-			else:
-				V = xx[1,0]/np.cos(gamma)
-				# Gradients
-				dV_x[1,0] = 1/np.cos(gamma)
-		else:
-			# Velocity value
-			V = (xx[1,0]+xx[3,0])/(np.cos(gamma)-np.sin(gamma))
-			# Gradients
-			dV_x[1,0] = 1/(np.cos(gamma)-np.sin(gamma))
-			dV_x[3,0] = 1/(np.cos(gamma)-np.sin(gamma))
+		V = (xx[1,0]+xx[3,0])/(np.cos(gamma)-np.sin(gamma))
+		# Gradients
+		dV_x[1,0] = (np.cos(gamma)-np.sin(gamma)-(xx[1,0]+xx[3,0])*(-np.sin(gamma)*d_gamma[1,0]-np.cos(gamma)*d_gamma[1,0]))/(np.cos(gamma)-np.sin(gamma))**2
+		dV_x[3,0] = (np.cos(gamma)-np.sin(gamma)-(xx[1,0]+xx[3,0])*(-np.sin(gamma)*d_gamma[3,0]-np.cos(gamma)*d_gamma[3,0]))/(np.cos(gamma)-np.sin(gamma))**2
 
 		return V, dV_x
 
@@ -86,15 +115,15 @@ class Dynamics:
 		Cd0 = self.cd0
 		Cda = self.cda
 		V, dV_x = self.vel_vector(xx)
-		gamma, _ = self.gamma_angle(xx)
+		gamma, d_gamma = self.gamma_angle(xx)
 		alpha = xx[4,0]-gamma
 		# Drag force value
 		D = 0.5 * rho * (V**2) * S *(Cd0 + Cda * alpha**2)
 
 		# Gradients
 		dD_x = np.zeros((self.ns,1))
-		dD_x[1,0] = rho*V*dV_x[1,0]*S*Cd0
-		dD_x[3,0] = rho*V*dV_x[3,0]*S*Cd0
+		dD_x[1,0] = rho*V*dV_x[1,0]*S*Cd0 + rho*V*dV_x[1,0]*S*Cda*alpha**2+rho*(V**2)*S*Cda*alpha*-d_gamma[1,0]
+		dD_x[3,0] = rho*V*dV_x[3,0]*S*Cd0 + rho*V*dV_x[3,0]*S*Cda*alpha**2+rho*(V**2)*S*Cda*alpha*-d_gamma[3,0]
 		dD_x[4,0] = rho*V*S*Cda*alpha
 
 		return D,dD_x
@@ -112,7 +141,7 @@ class Dynamics:
 		Cla = self.cla
 		S = self.S
 		V, dV_x = self.vel_vector(xx)
-		gamma, _ = self.gamma_angle(xx)
+		gamma, d_gamma = self.gamma_angle(xx)
 		alpha = xx[4,0]-gamma
 
 		# Lift Force value
@@ -120,13 +149,18 @@ class Dynamics:
 
 		# Gradients
 		dL_x = np.zeros((self.ns,1))
-		dL_x[1,0] = rho*V*dV_x[1,0]*S*Cla*alpha
-		dL_x[3,0] = rho*V*dV_x[3,0]*S*Cla*alpha
+		dL_x[1,0] = rho*V*dV_x[1,0]*S*Cla*alpha + 0.5*rho*V**2*S*Cla*-d_gamma[1,0]
+		dL_x[3,0] = rho*V*dV_x[3,0]*S*Cla*alpha + 0.5*rho*V**2*S*Cla*-d_gamma[3,0]
 		dL_x[4,0] = 0.5*rho*(V**2)*S*Cla
 
 		return L, dL_x
 
 	def step(self,xx,uu):
+		# print(uu)
+		# sign = -1 if xx[1] < 0 else 1
+		# xx[1] = np.min((abs(xx[1]),480))*sign
+		# sign = -1 if xx[3] < 0 else 1
+		# xx[3] = np.min((abs(xx[3]),480))*sign
 		'''
 			This function takes on step discrete time step based on the current state and the current input
 			Inputs: xx --> system states,  uu--> system Inputs
@@ -147,7 +181,6 @@ class Dynamics:
 		g = self.g
 		dt = self.dt
 
-		V = 2.0
 		dV_x = np.zeros((8,1))
 		V, dV_x = self.vel_vector(xx)
 		gamma, d_gamma = self.gamma_angle(xx)
@@ -159,7 +192,7 @@ class Dynamics:
 		xxp[1] = xx[1,0] + (dt/m)*(uu[0,0]*np.cos(xx[4,0]) - D * np.cos(gamma) - L*np.sin(gamma))
 
 		xxp[2] = xx[2,0] + dt * xx[3,0]
-		xxp[3] = xx[3,0] + (dt/m)*(uu[0,0]*np.sin(xx[4,0]) - D * np.sin(gamma) + L*np.cos(gamma)) - m*g
+		xxp[3] = xx[3,0] + (dt/m)*(uu[0,0]*np.sin(xx[4,0]) - D * np.sin(gamma) + L*np.cos(gamma) - g)
 
 		xxp[4] = xx[4,0] + dt * xx[5,0]
 		xxp[5] = xx[5,0] + dt * (uu[1,0]/J)
@@ -210,11 +243,58 @@ class Dynamics:
 		fu[0,3] = (dt/m)*np.sin(xx[4,0])
 		
 		fu[1,5] = dt/J
+		# print(xx[4,0])
 
 		return xxp, fx, fu
 
+	def get_input(self,xx):
+		''' Still work under progress'''
+		V, dV_x = self.vel_vector(xx)
+		gamma, d_gamma = self.gamma_angle(xx)
+		D, dD_x = self.dragForce(xx)
+		L,dL_x = self.liftForce(xx)
 
-	def __point_constraints(self,x, *args):
+	def __quasi_cost(self,x):
+		''' Still work under progress'''
+		m = self.m
+		rho = self.rho
+		s = self.S
+		cd0 = self.cd0
+		cda = self.cda
+		cla = self.cla
+		g = self.g
+		J = self.J
+		dt = self.dt
+		xx = self.Temp
+
+		gamma, _ = self.gamma_angle(xx)
+		D, dD_x = self.dragForce(xx)
+		L,dL_x = self.liftForce(xx)
+		cost = (x[0]*np.cos(xx[4]) - D * np.cos(gamma) - L*np.sin(gamma))**2 + ((x[0]*np.sin(xx[4]) - D * np.sin(gamma) + L*np.cos(gamma)) - m*g)**2
+		return [cost]
+
+
+	def get_quasi_static_trajectory(self,xx):
+		''' Still work under progress'''
+		N = xx.shape[1]
+		uu = np.zeros((self.ni,N))
+		xx_new = xx.copy()
+		xx_new[4,:] = 20*np.pi/180
+		x_init = [200]
+		for tt in range(N):
+			self.Temp = xx_new[:,tt].copy()
+			sol = fsolve(self.__quasi_cost,x_init)
+			uu[0,tt] = sol[0]
+			# th = round_theta(sol[1])
+			# xx_new[4,tt] = th
+			x_init = [sol[0]]
+			# print(self.__quasi_cost(x_init))
+		return xx_new,uu
+
+
+
+	def __point_constraints(self,x):
+		''' Still work under progress'''
 		m = self.m
 		rho = self.rho
 		s = self.S
@@ -231,13 +311,12 @@ class Dynamics:
 		xx[4,0] = x[2]
 		gamma, _ = self.gamma_angle(xx)
 		cost = [
-				args[0]-dt*x[0],
 				(x[3]*np.cos(x[2]) - D * np.cos(gamma) - L*np.sin(gamma)),
-				args[1]-dt*x[1]
 				(x[3]*np.sin(x[2]) - D * np.sin(gamma) + L*np.cos(gamma)) - m*g]
 		return cost
 
 	def gain_attitude_points(self,Theta_init, Theta_final, x_init, z_init, T, time_period):
+		''' Still work under progress'''
 		p1 = [0.1, 0.15]
 		xx = np.zeros((2,8))
 		for i, Theta in enumerate([Theta_init, Theta_final]):
@@ -295,12 +374,29 @@ class Dynamics:
 		xx_ref = xx_ref.reshape(-1,1)
 		uu_ref = uu_ref.reshape(-1,1)
 
-		ll = 0.5*(xx - xx_ref).T@QQt@(xx - xx_ref) + 0.5*(uu - uu_ref).T@RRt@(uu - uu_ref)
+		# bar, dbar = self.barrier_function(xx,uu)
 
-		lx = QQt@(xx - xx_ref)
+		ll = 0.5*(xx - xx_ref).T@(QQt@(xx - xx_ref)) + 0.5*(uu - uu_ref).T@(RRt@(uu - uu_ref))# + bar
+
+		lx = (QQt@(xx - xx_ref))#+dbar
 		lu = RRt@(uu - uu_ref)
-
 		return ll, lx, lu
+	def barrier_function(self,xx,uu):
+		''' Still work under progress'''
+		rho = self.rho
+		Cla = self.cla
+		m = self.m
+		g = self.g
+		S = self.S
+		F = (2*(-uu[0,0]*np.sin(xx[4,0])+m*g))/(rho*S*Cla*xx[4,0])
+		fun = self.epsilon*(-np.real(np.emath.log(xx[1,0]**2-F)))#*(xx[1,0]-180)*(xx[3,0]-180)))
+		dxFun = np.zeros((self.ns,1))
+		dxFun[1,0] = -self.epsilon*(2*xx[1,0])/(xx[1,0]**2-F)
+		# dxFun[3,0] = -self.epsilon/(-xx[1,0]+self.speedLimit)
+		return fun, dxFun
+
+	def update_epsilon(self,r):
+		self.epsilon = (self.eps_init-self.eps_end)*r+self.eps_end
 
 	def termcost(self,xx,xx_ref):
 		"""
@@ -328,6 +424,3 @@ class Dynamics:
 		lTx = QQT@(xx - xx_ref)
 
 		return llT, lTx
-
-	def phase_data(self,dt,xx):
-		x_max, x_min
