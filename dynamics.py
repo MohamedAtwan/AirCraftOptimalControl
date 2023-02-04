@@ -1,13 +1,14 @@
 import numpy as np
 from math import log
 from scipy.optimize import fsolve, least_squares, minimize, NonlinearConstraint
+from random import random
 
 def round_theta(th):
 	''' Some recursive algorithm to round theta to be between zero and 2pi'''
-	if abs(th) < np.pi*2:
+	if abs(th) < np.pi:
 		return th
 	else:
-		if th < 0:
+		if th < -np.pi:
 			return round_theta(th + np.pi*2)
 		else:
 			return round_theta(th - np.pi*2)
@@ -32,7 +33,7 @@ class Dynamics:
 		self.dt = 1e-3
 		self.QQt = np.eye(self.ns)
 		self.QQt[0,0] = 1
-		self.QQt[2,2] = 100
+		self.QQt[1,1] = 100
 		# self.QQt[4,4] = 1e-1
 		self.RRt = 1e-2*np.eye(self.ni)
 		self.QQT = 10*self.QQt
@@ -42,25 +43,75 @@ class Dynamics:
 		self.speedLimit = 480
 		self.epsilon = self.eps_init
 
-	def get_equilibrium(self,theta,x,z):
+	def get_equilibrium(self,x,z, alpha,tt):
 		# TBD
 		''' Calculate the equillibrium corresoponding to some (Theta, X, Z) values
 			Inputs: theta, X, V
 			outputs: State values vector "xx"
 		'''
+		# alpha = 5*np.pi/180 # radians
+		# alpha = -np.pi+(random()*2*np.pi)
+		TT = tt.shape[0]
+		xx = np.zeros((self.ns,TT))
+		uu = np.zeros((self.ni,TT))
+		xx[0,0] = x
+		xx[1,0] = z
+		xx[2,0] = 170
+		xx[5,0] = -0.540
+		xx[3,0] = xx[5,0]+alpha
+		uu[0,0] = (random()*100)
+		self.Temp = xx[:,0].copy(), alpha
+		x_init = np.array([xx[2,0],xx[5,0],uu[0,0],xx[3,0]])
+		for i in range(TT-1):
+			sol = least_squares(self.equilibrium_cost,x_init,ftol=1e-3,bounds = ((0,-np.pi,0.0,-np.pi),(480,np.pi,100,np.pi)), max_nfev = 2000)
+			# sol = fsolve(self.equilibrium_cost,x_init)
+			# return xx, np.array([uu,0])
+			if not(sol.success):
+				raise RunTimeError(sol.message)
+			xx[2,i] = sol.x[0]
+			xx[5,i] = round_theta(sol.x[1])
+			xx[3,i] = round_theta(sol.x[3])
+			uu[0,i] = sol.x[2]
+			xx[:,i+1] = self.step(xx[:,i],uu[:,i])[0]
+			# xx[5,i+1] = round_theta(xx[5,i+1])
+			x_init = np.array([xx[2,i+1],xx[5,i+1],uu[0,i],xx[3,i+1]])
+			# print(x_init)
+			self.Temp = xx[:,i].copy(), alpha
+		return xx, uu
+			
+	def equilibrium_cost(self,x):
 		m = self.m
 		g = self.g
-		rho = self.rho
-		Cla = self.cla
-		S = self.S
-		xx = np.zeros((self.ns))
-		xx[0] = x
-		xx[1] = ((2*g)/(rho*S*Cla*theta))**0.5
-		xx[2] = z
-		xx[3] = 0 
-		xx[4] = theta
-		xx[5] = 0
-		return xx
+		tf = 1
+		NN = int(tf/self.dt)
+		xx = np.zeros((self.ns,NN))
+		xx[:,0] = self.Temp[0].copy()
+		alpha = self.Temp[1]
+		xx[2,0] = x[0]
+		xx[5,0] = x[1]
+		xx[3,0] = xx[5,0]
+		uu = x[2]
+		D,_ = self.dragForce(xx)
+		L,_ = self.liftForce(xx)
+		# cost = 0
+		# for i in range(NN-1):
+		# 	xx[:,i+1] = self.step(xx[:,i],np.array([uu,0]))[0].flatten()
+		# 	cost += np.sum((xx[:,i+1]-xx[:,i])**2)
+
+		cost = [-D - m*g*np.sin(xx[5,0]) + uu * np.cos(alpha),
+				 L - m*g*np.cos(xx[5,0]) + uu * np.sin(alpha),
+				 xx[3,0]-xx[5,0]-alpha]
+		return sum(cost)
+		# return -D - m*g*np.sin(xx[5]) + uu * np.cos(alpha)
+		# cost = [-D - m*g*np.sin(xx[5]) + uu * np.cos(alpha),
+		# 		 L - m*g*np.cos(xx[5]) + uu * np.sin(alpha),
+		# 		 xx[2]*np.cos(xx[5]),
+		# 		 -xx[2]*np.sin(xx[5])]
+		# # return np.sum(cost)
+		# cost = np.atleast_2d(cost)@np.atleast_2d(cost).T
+		# return cost[0,0]
+
+
 
 
 	def dragForce(self, xx):
@@ -140,10 +191,6 @@ class Dynamics:
 		Cda = self.cda
 		g = self.g
 		dt = self.dt
-
-		dV_x = np.zeros((8,1))
-		V, dV_x = self.vel_vector(xx)
-		gamma, d_gamma = self.gamma_angle(xx)
 		alpha = xx[3,0] - xx[5,0]
 		D, dD_x = self.dragForce(xx)
 		L,dL_x = self.liftForce(xx)
@@ -177,7 +224,7 @@ class Dynamics:
 		# df3
 		# Gradients of f3 w.r.t. the states
 		for i in range(0,ns):
-			fx[i,1] = (dt/m)*(-dD_x[i,0])
+			fx[i,2] = (dt/m)*(-dD_x[i,0])
 		
 		fx[2,2] +=1
 		fx[3,2] += (dt/m)*(-uu[0,0]*np.sin(alpha))
@@ -209,6 +256,47 @@ class Dynamics:
 		fu[0,5] = (dt/(m*xx[2,0]))*np.sin(alpha)
 		
 		fu[1,4] = dt/J
+
+		# fxx = np.zeros((self.ns,self.ns,self.ns))
+		# fxx1 = np.zeros((self.ns,self.ns))
+		# fxx2 = np.zeros((self.ns,self.ns))
+		# fxx3 = np.zeros((self.ns,self.ns))
+		# fxx4 = np.zeros((self.ns,self.ns))
+		# fxx5 = np.zeros((self.ns,self.ns))
+		# fxx6 = np.zeros((self.ns,self.ns))
+
+		# fxx1[2,5] = -dt*np.sin(xx[5,0])
+		# fxx1[5,2] = -dt*np.sin(xx[5,0])
+		# fxx1[5,5] = -dt*xx[2,0]*np.cos(xx[5,0])
+
+		# fxx2[2,5] = dt*np.cos(xx[5,0])
+		# fxx2[5,2] = -dt*np.cos(xx[5,0])
+		# fxx2[5,5] = dt*xx[2,0]*np.sin(xx[5,0])
+
+		# fxx3[2,2] = (dt/m)*-1*(rho*S*(Cd0+Cda*alpha**2))
+		# fxx3[2,3] = (dt/m)*-1*(rho*xx[2,0]*2*alpha)
+		# fxx3[2,5] = (dt/m)*(rho*xx[2,0]*2*alpha)
+		# fxx3[3,2] = (dt/m)*-1*(rho*2*xx[2,0]*S*Cda*alpha)
+		# fxx3[3,3] = (dt/m)*(-1*(rho*(xx[2,0]**2)*S*Cda)-uu[0,0]*np.cos(alpha))
+		# fxx3[3,5] = (dt/m)*((rho*(xx[2,0]**2)*S*Cda)+uu[0,0]*np.cos(alpha))
+		# fxx3[5,2] = (dt/m)*-1*(-rho*2*xx[2,0]*S*Cda*alpha)
+		# fxx3[5,3] = (dt/m)*(-1*(-rho*(xx[2,0]**2)*S*Cda)+uu[0,0]*np.cos(alpha))
+		# fxx3[5,5] = (dt/m)*((-rho*(xx[2,0]**2)*S*Cda)-uu[0,0]*np.cos(alpha)+m*g*np.sin(xx[5,0]))
+
+
+		# fxx6[2,3] = (-dt*0.5*rho*S*Cla)/m + (dt*rho*S*Cla)/m
+		# fxx6[2,5] = (dt*0.5*rho*S*Cla)/m - (dt*rho*S*Cla)/m
+		# fxx6[3,2] = (-dt/(m*xx[2,0]**2))*(dL_x[3,0] + uu[0,0]*np.cos(alpha)) + (rho*xx[2,0]*S*Cla)*(dt/(m*xx[2,0]))
+		# fxx6[3,3] = -uu[0,0]*np.sin(alpha)*(dt/(m*xx[2,0]))
+		# fxx6[3,5] = uu[0,0]*np.sin(alpha)*(dt/(m*xx[2,0]))
+		# fxx6[5,2] = (-dt/(m*xx[2,0]**2))*(dL_x[5,0] + m*g*np.sin(xx[5,0]) - uu[0,0]*np.cos(alpha))+(-rho*xx[2,0]*S*Cla)*(dt/(m*xx[2,0]))
+		# fxx6[5,3] = uu[0,0]*np.sin(alpha)*(dt/(m*xx[2,0]))
+		# fxx6[5,5] = (-uu[0,0]*np.sin(alpha)+m*g*np.cos(xx[5,0]))*(dt/(m*xx[2,0]))
+
+		# fxx[0,:,:] = fxx1
+		# fxx[1,:,:] = fxx2
+		# fxx[2,:,:] = fxx3
+		# fxx[5,:,:] = fxx6
 
 		return xxp, fx, fu
 
