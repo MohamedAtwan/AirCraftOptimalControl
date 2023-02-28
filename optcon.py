@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-
+visu_armijo = True
 class GradientMethod:
 	def __init__(self,Dynamics,cost,xx_ref,uu_ref, max_iters = 200,
 				     stepsize_0 = 1e-2, cc = 0.5, beta = 0.7,
@@ -159,7 +159,7 @@ class GradientMethod:
 		plt.ylabel('$J(\\mathbf{u}^k)$')
 		plt.yscale('log')
 		plt.grid()
-		plt.show(block=False)
+		plt.show()
 		return xx_star, uu_star
 
 	def get_update(self,stepsize,uu,deltau,x0):
@@ -186,6 +186,7 @@ class GradientMethod:
 		dyn = self.dyn
 
 		stepsize_0 = self.stepsize_0
+		# descent = descent.squeeze()
 
 		# ARMIJO PARAMETERS
 		cc = self.cc
@@ -235,58 +236,58 @@ class GradientMethod:
 			else:
 				print('Armijo stepsize = {}'.format(stepsize))
 				break
-		return stepsize
+		# return stepsize
 
 		# ############################
 		# # Armijo plot
 		# ############################
 
-		# if visu_armijo:
+		if visu_armijo:
 
-		# 	steps = np.linspace(0,1,int(1e1))
-		# 	costs = np.zeros(len(steps))
+			steps = np.linspace(0,1,int(1e1))
+			costs = np.zeros(len(steps))
 
-		# 	for ii in range(len(steps)):
+			for ii in range(len(steps)):
 
-		# 		step = steps[ii]
+				step = steps[ii]
 
-		# 		# temp solution update
+				# temp solution update
 
-		# 		xx_temp = np.zeros((ns,TT))
-		# 		uu_temp = np.zeros((ni,TT))
+				xx_temp = np.zeros((ns,TT))
+				uu_temp = np.zeros((ni,TT))
 
-		# 		xx_temp[:,0] = x0
+				xx_temp[:,0] = x0
 
-		# 		for tt in range(TT-1):
-		# 			uu_temp[:,tt] = uu[:,tt] + step*deltau[:,tt]
-		# 			xx_temp[:,tt+1] = dyn.dynamics(xx_temp[:,tt], uu_temp[:,tt])[0]
+				for tt in range(TT-1):
+					uu_temp[:,tt] = uu[:,tt] + step*deltau[:,tt]
+					xx_temp[:,tt+1] = dyn.step(xx_temp[:,tt], uu_temp[:,tt])[0]
 
-		# 		# temp cost calculation
-		# 		JJ_temp = 0
+				# temp cost calculation
+				JJ_temp = 0
 
-		# 		for tt in range(TT-1):
-		# 			temp_cost = cst.stagecost(xx_temp[:,tt], uu_temp[:,tt], xx_ref[:,tt], uu_ref[:,tt])[0]
-		# 			JJ_temp += temp_cost
+				for tt in range(TT-1):
+					temp_cost = cst.stagecost(xx_temp[:,tt], uu_temp[:,tt], xx_ref[:,tt], uu_ref[:,tt])[0]
+					JJ_temp += temp_cost
 
-		# 		temp_cost = cst.termcost(xx_temp[:,-1], xx_ref[:,-1])[0]
-		# 		JJ_temp += temp_cost
+				temp_cost = cst.termcost(xx_temp[:,-1], xx_ref[:,-1])[0]
+				JJ_temp += temp_cost
 
-		# 		costs[ii] = JJ_temp
-		# 	plt.figure(1)
-		#     plt.clf()
+				costs[ii] = JJ_temp
+			plt.figure(1)
+			plt.clf()
 
-		#     plt.plot(steps, costs, color='g', label='$J(\\mathbf{u}^k - stepsize*d^k)$')
-		#     plt.plot(steps, JJ[kk] - descent[kk]*steps, color='r', label='$J(\\mathbf{u}^k) - stepsize*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
-		#     plt.plot(steps, JJ[kk] - cc*descent[kk]*steps, color='g', linestyle='dashed', label='$J(\\mathbf{u}^k) - stepsize*c*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
+			plt.plot(steps, costs, color='g', label='$J(\\mathbf{u}^k - stepsize*d^k)$')
+			plt.plot(steps, (JJ_temp - descent*steps).squeeze(), color='r', label='$J(\\mathbf{u}^k) - stepsize*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
+			plt.plot(steps, (JJ_temp - cc*descent*steps).squeeze(), color='g', linestyle='dashed', label='$J(\\mathbf{u}^k) - stepsize*c*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
 
-		#     plt.scatter(stepsizes, costs_armijo, marker='*') # plot the tested stepsize
+			plt.scatter(stepsizes, costs_armijo, marker='*') # plot the tested stepsize
 
-		#     plt.grid()
-		#     plt.xlabel('stepsize')
-		#     plt.legend()
-		#     plt.draw()
+			plt.grid()
+			plt.xlabel('stepsize')
+			plt.legend()
+			plt.draw()
 
-		#     plt.show()
+			plt.show()
 
 		return stepsize
 
@@ -395,7 +396,8 @@ class NewtonMethod(GradientMethod):
 				AA = fx.T
 				BB = fu.T
 
-				if kk > ((max_iters-1)*0.2):
+				if kk > 1500:#((max_iters-1)*0.1):
+					# self.stepsize_0 *= 1
 					QQ[:,:,tt,kk] = lxx + fxx
 					RR[:,:,tt,kk] = luu + fuu
 					SS[:,:,tt,kk] = lux + fux
@@ -420,11 +422,13 @@ class NewtonMethod(GradientMethod):
 
 				# descent[kk] += deltau[:,tt,kk].T@deltau[:,tt,kk]
 
-			deltau[:,:,kk] = ltv_LQR(AAin[:,:,:TT,kk],BBin[:,:,:TT,kk],QQ[:,:,:TT,kk],
-									 RR[:,:,:TT,kk],SS[:,:,:TT,kk],QQ[:,:,TT-1,kk],
-									 TT, x0,qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])[-1]
+			Kt,_,delta_x, deltau[:,:,kk] = ltv_LQR(AAin[:,:,:TT,kk],BBin[:,:,:TT,kk],QQ[:,:,:TT,kk],
+											  RR[:,:,:TT,kk],SS[:,:,:TT,kk],QQ[:,:,TT-1,kk],
+											  TT, x0,qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])
 
-			descent[kk] = np.sum((deltau[:,:,kk].T@deltau[:,:,kk]))
+			for tt in range(TT-1):
+
+				descent[kk] += (deltau[:,tt,kk].T@deltau[:,tt,kk])
 
 			##################################
 			# Stepsize selection - ARMIJO
@@ -434,6 +438,8 @@ class NewtonMethod(GradientMethod):
 			############################
 			# Update the current solution
 			############################
+			# for tt in range(TT-1):
+			# 	uu[:,tt,kk+1] = uu[:,tt,kk]+stepsize*(Kt*delta_x)
 
 			xx_temp, uu_temp = self.get_update(stepsize,uu[:,:,kk],deltau[:,:,kk],x0)
 
