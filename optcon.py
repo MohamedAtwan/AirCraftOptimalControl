@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-visu_armijo = True
+visu_armijo = False
 class GradientMethod:
 	def __init__(self,Dynamics,cost,xx_ref,uu_ref, max_iters = 200,
 				     stepsize_0 = 1e-2, cc = 0.5, beta = 0.7,
@@ -368,6 +368,7 @@ class NewtonMethod(GradientMethod):
 		print('-*-*-*-*-*-')
 
 		kk = 0
+		EE = np.eye(RR.shape[0])*10
 
 		for kk in range(max_iters-1):
 
@@ -391,13 +392,17 @@ class NewtonMethod(GradientMethod):
 			for tt in reversed(range(TT-1)):  # integration backward in time
 
 				aa, bb, lxx, lxu, lux, luu = cst.stagecost(xx[:,tt, kk], uu[:,tt,kk], xx_ref[:,tt], uu_ref[:,tt])[1:]
-				fx, fu, fxx, fuu, fux, fxu = dyn.step(xx[:,tt,kk], uu[:,tt,kk],lmbd[:,tt+1,kk])[1:]
+				fx, fu, fxx, fuu, fux = dyn.step(xx[:,tt,kk], uu[:,tt,kk],lmbd[:,tt+1,kk])[1:]
 
 				AA = fx.T
 				BB = fu.T
 
-				if kk > 1500:#((max_iters-1)*0.1):
-					# self.stepsize_0 *= 1
+				if kk > 8:#((max_iters-1)*0.1):
+					# QQ[:,:,tt,kk] = lxx
+					# RR[:,:,tt,kk] = luu
+					# SS[:,:,tt,kk] = lux
+					# RR[:,:,tt,kk] = RR[:,:,tt,kk]@ EE
+					# self.stepsize_0 = 0.1
 					QQ[:,:,tt,kk] = lxx + fxx
 					RR[:,:,tt,kk] = luu + fuu
 					SS[:,:,tt,kk] = lux + fux
@@ -421,7 +426,8 @@ class NewtonMethod(GradientMethod):
 				# deltau[:,tt,kk] = deltau_temp.squeeze()
 
 				# descent[kk] += deltau[:,tt,kk].T@deltau[:,tt,kk]
-
+			# print(lxx)
+			# print(fxx)
 			Kt,_,delta_x, deltau[:,:,kk] = ltv_LQR(AAin[:,:,:TT,kk],BBin[:,:,:TT,kk],QQ[:,:,:TT,kk],
 											  RR[:,:,:TT,kk],SS[:,:,:TT,kk],QQ[:,:,TT-1,kk],
 											  TT, x0,qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])
