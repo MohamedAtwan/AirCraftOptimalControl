@@ -119,41 +119,80 @@ class Dynamics:
 		self.speedLimit = 480
 		self.epsilon = self.eps_init
 
-	def get_equilibrium(self,x,z, theta,tt):
-		# TBD
-		''' Calculate the equillibrium corresoponding to some (Theta, X, Z) values
-			Inputs: theta, X, V
-			outputs: State values vector "xx"
-		'''
-		# alpha = 5*np.pi/180 # radians
-		# alpha = -np.pi+(random()*2*np.pi)
+	def get_equilibrium(self,x,z,tt):
+		m = self.m
+		J = self.J
+		rho = self.rho
+		Cla = self.cla
+		S = self.S
+		Cd0 = self.cd0
+		Cda = self.cda
+		g = self.g
+		TT = tt.shape[0]
+		dt = self.dt
+
+		xx = np.zeros((self.ns,tt.shape[0]))
+		uu = np.zeros((self.ni,tt.shape[0]))
+		xx[0,0] = x
+		xx[1,0] = z
+		xx[2,0] = 28.28
+		xx[5,:] = 5*np.pi/180
+		xx[3,:] = 10*np.pi/180
+		uu[0,0] = 47.25
+
+		for i in range(TT-1):
+			alpha = xx[3,i]-xx[5,i]
+			temp = 0.5*rho*S*Cla*alpha+np.tan(alpha)*0.5*rho*S*(Cd0+Cda*alpha**2)
+			xx[2,i] = ((m*g*(np.cos(xx[5,i])-(np.sin(xx[5,i])/np.cos(alpha))))/temp)**0.5
+			uu[0,i] = (1/np.cos(alpha))*(0.5*rho*xx[2,i]**2*S*(Cd0+Cda*alpha**2)+m*g*np.sin(xx[5,i]))
+			xx[0,i+1] = xx[0,i]+dt*xx[2,0]*np.cos(xx[5,0])
+			xx[1,i+1] = xx[1,i]-dt*xx[2,0]*np.sin(xx[5,0])
+		xx[2,-1] = ((m*g*(np.cos(xx[5,-1])-(np.sin(xx[5,-1])/np.cos(alpha))))/temp)**0.5
+		uu[0,-1] = (1/np.cos(alpha))*(0.5*rho*xx[2,-1]**2*S*(Cd0+Cda*alpha**2)+m*g*np.sin(xx[5,-1]))
+		return xx,uu
+
+	def trajectory_generator(self,xx,zz,tt):
+		x_init = np.array([xx[0],zz[0],100,10*np.pi/180,0,15*np.pi/180])
+		self.Temp = x_init, xx, zz
+		u_init = np.zeros(tt.shape)
+		sol = fsolve(self.traj_cost,u_init)
+		return sol
+
+
+	def traj_cost(self,x):
+		x_init = self.Temp[0]
+		ref_x = self.Temp[1]
+		ref_z = self.Temp[2]
+		cost = []
+
+		for i in range(x.shape[0]):
+			x_init = self.step(x_init,np.array([x[i],0.0]))[0]
+			cost.append(np.abs(x_init[0]-ref_x[i]) + np.abs(x_init[1]-ref_z[i]))
+		return cost
+
+	def get_equilibrium_1(self,x,z, theta,tt):
 		TT = tt.shape[0]
 		xx = np.zeros((self.ns,TT))
 		uu = np.zeros((self.ni,TT))
 		xx[0,0] = x
 		xx[1,0] = z
-		xx[2,0] = 170
-		xx[5,0] = 0
-		xx[3,0] = theta
-		uu[0,0] = (random()*100)
+		xx[2,0] = 0
+		xx[5,0] = 10*np.pi/180
+		xx[3,0] = 15*np.pi/180
+		uu[0,0] = 0
 		# alpha = xx[3,0]-xx[5,0]
 		self.Temp = xx[:,0].copy(), theta
-		x_init = np.array([xx[2,0],xx[5,0],uu[0,0]])
-		for i in range(TT-1):
-			# sol = least_squares(self.equilibrium_cost,x_init,ftol=1e-3,bounds = ((0,-np.pi,0.0,-np.pi),(480,np.pi,100,np.pi)), max_nfev = 2000)
+		x_init = np.array([xx[2,0],uu[0,0]])
+
+		while (xx[2,0]<= 0) or (uu[0,0]<=0):
 			sol = fsolve(self.equilibrium_cost,x_init)
-			# return xx, np.array([uu,0])
-			# if not(sol.success):
-			# 	raise RunTimeError(sol.message)
-			xx[2,i] = sol[0]
-			xx[5,i] = round_theta(sol[1])
-			# xx[3,i] = round_theta(sol[3])
-			uu[0,i] = sol[2]
+			xx[2,0] = sol[0]
+			uu[0,0] = sol[1]
+
+		for i in range(TT-1):
 			xx[:,i+1] = self.step(xx[:,i],uu[:,i])[0]
-			# xx[5,i+1] = round_theta(xx[5,i+1])
-			x_init = np.array([xx[2,i+1],xx[5,i+1],uu[0,i]])
-			# print(x_init)
-			self.Temp = xx[:,i].copy(), theta
+			x_init = np.array([xx[2,i+1],uu[0,i]])
+			# self.Temp = xx[:,i].copy()
 		return xx, uu
 			
 	def equilibrium_cost(self,x):
@@ -163,31 +202,15 @@ class Dynamics:
 		NN = int(tf/self.dt)
 		xx = np.zeros((self.ns,NN))
 		xx[:,0] = self.Temp[0].copy()
-		theta = self.Temp[1]
 		xx[2,0] = x[0]
-		xx[5,0] = x[1]
-		xx[3,0] = theta
-		uu = x[2]
+		uu = x[1]
 		alpha = xx[3,0]-xx[5,0]
 		D,_ = self.dragForce(xx)
 		L,_ = self.liftForce(xx)
-		# cost = 0
-		# for i in range(NN-1):
-		# 	xx[:,i+1] = self.step(xx[:,i],np.array([uu,0]))[0].flatten()
-		# 	cost += np.sum((xx[:,i+1]-xx[:,i])**2)
 
-		cost = [-D - m*g*np.sin(xx[5,0]) + uu * np.cos(alpha),
-				 L - m*g*np.cos(xx[5,0]) + uu * np.sin(alpha)]
-				 # xx[3,0]-xx[5,0]-alpha]
-		return [sum(cost),]*3
-		# return -D - m*g*np.sin(xx[5]) + uu * np.cos(alpha)
-		# cost = [-D - m*g*np.sin(xx[5]) + uu * np.cos(alpha),
-		# 		 L - m*g*np.cos(xx[5]) + uu * np.sin(alpha),
-		# 		 xx[2]*np.cos(xx[5]),
-		# 		 -xx[2]*np.sin(xx[5])]
-		# # return np.sum(cost)
-		# cost = np.atleast_2d(cost)@np.atleast_2d(cost).T
-		# return cost[0,0]
+		cost = [-0.5 * rho * (xx[2,0]**2) * S *(Cd0 + Cda * alpha**2) - m*g*np.sin(xx[5,0]) + uu * np.cos(alpha),
+				 0.5*rho*(xx[2,0]**2)*S*Cla*alpha - m*g*np.cos(xx[5,0]) + uu * np.sin(alpha)]
+		return cost
 
 
 
@@ -292,53 +315,19 @@ class Dynamics:
 		fx = np.zeros((ns, ns))
 		fu = np.zeros((ni, ns))
 
-		# df1
-		# Gradients of f1 w.r.t. the states
-		fx[0,0] = 1
-		fx[2,0] = dt*np.cos(xx[5,0])
-		fx[5,0] = -dt*xx[2,0]*np.sin(xx[5,0])
+		fx = np.array([[1, 0, dt*np.cos(xx[5,0]), 0, 0, -dt*xx[2,0]*np.sin(xx[5,0])],
+					   [0, 1, -dt*np.sin(xx[5,0]), 0, 0, -dt*xx[2,0]*np.cos(xx[5,0])],
+					   [0, 0, 1 - (S*dt*rho*xx[2,0]*(Cd0 + Cda*(xx[3,0] - xx[5,0])**2))/m, -(dt*((Cda*S*rho*(2*xx[3,0] - 2*xx[5,0])*xx[2,0]**2)/2 + uu[0,0]*np.sin(xx[3,0] - xx[5,0])))/m, 0, (dt*((Cda*S*rho*(2*xx[3,0] - 2*xx[5,0])*xx[2,0]**2)/2 + uu[0,0]*np.sin(xx[3,0] - xx[5,0]) - g*m*np.cos(xx[5,0])))/m],
+					   [0, 0, 0, 1, dt, 0],
+					   [0, 0, 0, 0, 1, 0],
+					   [0, 0, (Cla*S*dt*rho*(xx[3,0] - xx[5,0]))/m - (dt*((Cla*S*rho*(xx[3,0] - xx[5,0])*xx[2,0]**2)/2 + uu[0,0]*np.sin(xx[3,0] - xx[5,0]) - g*m*np.cos(xx[5,0])))/(m*xx[2,0]**2), (dt*((Cla*S*rho*xx[2,0]**2)/2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0])))/(m*xx[2,0]), 0, 1 - (dt*((Cla*S*rho*xx[2,0]**2)/2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0]) - g*m*np.sin(xx[5,0])))/(m*xx[2,0])]])
+		fx = fx.T
 
-		# df2
-		# Gradients of f2 w.r.t. the states
-		fx[1,1] = 1
-		fx[2,1] = -dt*np.sin(xx[5,0])
-		fx[5,1] = -dt*xx[2,0]*np.cos(xx[5,0])
-
-		# df3
-		# Gradients of f3 w.r.t. the states
-		for i in range(0,ns):
-			fx[i,2] = (dt/m)*(-dD_x[i,0])
-		
-		fx[2,2] +=1
-		fx[3,2] += (dt/m)*(-uu[0,0]*np.sin(alpha))
-		fx[5,2] += (dt/m)*(-m*g*np.cos(xx[5,0])+uu[0,0]*np.sin(alpha))
+		fu = np.array([[0, 0], [0, 0], [(dt*np.cos(xx[3,0] - xx[5,0]))/m, 0], [0, 0], [0, dt/J], [(dt*np.sin(xx[3,0] - xx[5,0]))/(m*xx[2,0]), 0]])
+		fu = fu.T
 		
 
-		# df4
-		# Gradients of f4 w.r.t. the states
-		fx[3,3] = 1
-		fx[4,3] = dt
 
-
-		
-
-		# df5
-		# Gradients of f5 w.r.t. the states
-		fx[4,4] = 1
-
-		# df6
-		# Gradients of f6 w.r.t. the states
-		fx[2,5] = (-dt/(m*xx[2,0]**2))*L + (dt/(m*xx[2,0]))*dL_x[2,0]
-		fx[3,5] = (dt/(m*xx[2,0]))*(dL_x[3,0] + uu[0,0]*np.cos(alpha))
-		fx[5,5] = 1+(dt/(m*xx[2,0]))*(dL_x[5,0] + m*g*np.sin(xx[5,0]) - uu[0,0]*np.cos(alpha))
-
-		# dfu
-		# Gradients w.r.t. the inputs
-		fu[0,2] = (dt/m)*np.cos(alpha)
-		
-		fu[0,5] = (dt/(m*xx[2,0]))*np.sin(alpha)
-		
-		fu[1,4] = dt/J
 
 		# Hessian of napla_xx
 
@@ -350,64 +339,74 @@ class Dynamics:
 		fxx5 = np.zeros((self.ns,self.ns))
 		fxx6 = np.zeros((self.ns,self.ns))
 
-		fxx1[2,5] = -dt*np.sin(xx[5,0])
-		fxx1[5,2] = -dt*np.sin(xx[5,0])
-		fxx1[5,5] = -dt*xx[2,0]*np.cos(xx[5,0])
-
-		fxx2[2,5] = dt*np.cos(xx[5,0])
-		fxx2[5,2] = -dt*np.cos(xx[5,0])
-		fxx2[5,5] = dt*xx[2,0]*np.sin(xx[5,0])
-
-		fxx3[2,2] = (dt/m)*-1*(rho*S*(Cd0+Cda*alpha**2))
-		fxx3[2,3] = (dt/m)*-1*(rho*xx[2,0]*2*alpha)
-		fxx3[2,5] = (dt/m)*(rho*xx[2,0]*2*alpha)
-		fxx3[3,2] = (dt/m)*-1*(rho*2*xx[2,0]*S*Cda*alpha)
-		fxx3[3,3] = (dt/m)*(-1*(rho*(xx[2,0]**2)*S*Cda)-uu[0,0]*np.cos(alpha))
-		fxx3[3,5] = (dt/m)*((rho*(xx[2,0]**2)*S*Cda)+uu[0,0]*np.cos(alpha))
-		fxx3[5,2] = (dt/m)*-1*(-rho*2*xx[2,0]*S*Cda*alpha)
-		fxx3[5,3] = (dt/m)*(-1*(-rho*(xx[2,0]**2)*S*Cda)+uu[0,0]*np.cos(alpha))
-		fxx3[5,5] = (dt/m)*((-rho*(xx[2,0]**2)*S*Cda)-uu[0,0]*np.cos(alpha)+m*g*np.sin(xx[5,0]))
+		fxx1 = np.array([[0, 0,0, 0, 0,0],
+						 [0, 0,0, 0, 0,0],
+						 [0, 0,0, 0, 0,-dt*np.sin(xx[5,0])],
+						 [0, 0,0, 0, 0,0],
+						 [0, 0,0, 0, 0,0],
+						 [0, 0, -dt*np.sin(xx[5,0]), 0, 0, -dt*xx[2,0]*np.cos(xx[5,0])]])
 
 
-		fxx6[2,3] = (-dt*0.5*rho*S*Cla)/m + (dt*rho*S*Cla)/m
-		fxx6[2,5] = (dt*0.5*rho*S*Cla)/m - (dt*rho*S*Cla)/m
-		fxx6[3,2] = (-dt/(m*xx[2,0]**2))*(dL_x[3,0] + uu[0,0]*np.cos(alpha)) + (rho*xx[2,0]*S*Cla)*(dt/(m*xx[2,0]))
-		fxx6[3,3] = -uu[0,0]*np.sin(alpha)*(dt/(m*xx[2,0]))
-		fxx6[3,5] = uu[0,0]*np.sin(alpha)*(dt/(m*xx[2,0]))
-		fxx6[5,2] = (-dt/(m*xx[2,0]**2))*(dL_x[5,0] + m*g*np.sin(xx[5,0]) - uu[0,0]*np.cos(alpha))+(-rho*xx[2,0]*S*Cla)*(dt/(m*xx[2,0]))
-		fxx6[5,3] = uu[0,0]*np.sin(alpha)*(dt/(m*xx[2,0]))
-		fxx6[5,5] = (-uu[0,0]*np.sin(alpha)+m*g*np.cos(xx[5,0]))*(dt/(m*xx[2,0]))
+		fxx2 = np.array([[0, 0, 0, 0, 0,0],
+						 [0, 0, 0, 0, 0,0],
+						 [0, 0, 0, 0, 0,-dt*np.cos(xx[5,0])],
+						 [0, 0, 0, 0, 0,0],
+						 [0, 0, 0, 0, 0,0],
+						 [0, 0, -dt*np.cos(xx[5,0]), 0, 0, dt*xx[2,0]*np.sin(xx[5,0])]])
 
-		fxx[0,:,:] = fxx1
-		fxx[1,:,:] = fxx2
-		fxx[2,:,:] = fxx3
-		fxx[5,:,:] = fxx6
+		fxx3 = np.array([[0, 0, 0, 0, 0, 0],
+						[0, 0, 0, 0, 0, 0],
+						[0, 0,-(S*dt*rho*(Cd0 + Cda*(xx[3,0] - xx[5,0])**2))/m,-(Cda*S*dt*rho*xx[2,0]*(2*xx[3,0] - 2*xx[5,0]))/m, 0,(Cda*S*dt*rho*xx[2,0]*(2*xx[3,0] - 2*xx[5,0]))/m],
+						[0, 0,-(Cda*S*dt*rho*xx[2,0]*(2*xx[3,0] - 2*xx[5,0]))/m, -(dt*(Cda*S*rho*xx[2,0]**2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0])))/m, 0,(dt*(Cda*S*rho*xx[2,0]**2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0])))/m],
+						[0, 0, 0, 0, 0, 0],
+						[0, 0,(Cda*S*dt*rho*xx[2,0]*(2*xx[3,0] - 2*xx[5,0]))/m,  (dt*(Cda*S*rho*xx[2,0]**2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0])))/m, 0, -(dt*(Cda*S*rho*xx[2,0]**2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0]) - g*m*np.sin(xx[5,0])))/m]])
+
+		fxx6 = np.array([[0, 0, 0, 0, 0, 0],
+						[0, 0, 0, 0, 0, 0],
+						[0, 0, (2*dt*((Cla*S*rho*(xx[3,0] - xx[5,0])*xx[2,0]**2)/2 + uu[0,0]*np.sin(xx[3,0] - xx[5,0]) - g*m*np.cos(xx[5,0])))/(m*xx[2,0]**3) - (Cla*S*dt*rho*(xx[3,0] - xx[5,0]))/(m*xx[2,0]), (Cla*S*dt*rho)/m - (dt*((Cla*S*rho*xx[2,0]**2)/2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0])))/(m*xx[2,0]**2), 0, (dt*((Cla*S*rho*xx[2,0]**2)/2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0]) - g*m*np.sin(xx[5,0])))/(m*xx[2,0]**2) - (Cla*S*dt*rho)/m],
+						[0, 0,(Cla*S*dt*rho)/m - (dt*((Cla*S*rho*xx[2,0]**2)/2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0])))/(m*xx[2,0]**2), -(dt*uu[0,0]*np.sin(xx[3,0] - xx[5,0]))/(m*xx[2,0]), 0, (dt*uu[0,0]*np.sin(xx[3,0] - xx[5,0]))/(m*xx[2,0])],
+						[0, 0, 0, 0, 0, 0],
+						[0, 0, (dt*((Cla*S*rho*xx[2,0]**2)/2 + uu[0,0]*np.cos(xx[3,0] - xx[5,0]) - g*m*np.sin(xx[5,0])))/(m*xx[2,0]**2) - (Cla*S*dt*rho)/m, (dt*uu[0,0]*np.sin(xx[3,0] - xx[5,0]))/(m*xx[2,0]), 0, -(dt*(uu[0,0]*np.sin(xx[3,0] - xx[5,0]) - g*m*np.cos(xx[5,0])))/(m*xx[2,0])]])
+
+		fxx[:,:,0] = fxx1
+		fxx[:,:,1] = fxx2
+		fxx[:,:,2] = fxx3
+		fxx[:,:,5] = fxx6
 		# Hessian napla_ux
 		fux = np.zeros((self.ni,self.ns,self.ns))
-		fux[0,3,2] = (dt/m)*(-np.sin(alpha))
-		fux[0,5,2] = (dt/m)*(np.sin(alpha))
-		fux[0,3,5] = (dt/(m*xx[2,0]))*(np.cos(alpha))
-		fux[0,5,5] = (dt/(m*xx[2,0]))*(-np.cos(alpha))
-		# fux[0,2,5] = (-dt/(m*xx[2,0]**2))*np.sin(alpha)
+		fux[:,:,2] = np.array([[0, 0, 0, -(dt*np.sin(xx[3,0] - xx[5,0]))/m, 0, (dt*np.sin(xx[3,0] - xx[5,0]))/m],
+							   [0, 0, 0, 0, 0, 0]])
+		fux[:,:,5] = np.array([[0, 0, -(dt*np.sin(xx[3,0] - xx[5,0]))/(m*xx[2,0]**2), (dt*np.cos(xx[3,0] - xx[5,0]))/(m*xx[2,0]), 0, -(dt*np.cos(xx[3,0] - xx[5,0]))/(m*xx[2,0])],
+							  [0, 0, 0, 0, 0, 0]])
 
 		# Hessian napla_uu
 		fuu = np.zeros((self.ni,self.ni,self.ns))
 
 		# Hessian napla_xu
-		fxu = np.zeros((self.ns,self.ni,self.ns))
-		fxu[3,0,2] = (dt/m)*(-np.sin(alpha))
-		fxu[5,0,2] = (dt/m)*np.sin(alpha)
-		fxu[3,0,5] = (dt/(m*xx[2,0]))*(np.cos(alpha))
-		fxu[5,0,5] = (dt/(m*xx[2,0]))*(-np.cos(alpha))
+		# fxu = np.zeros((self.ns,self.ni,self.ns))
+		# fxu[3,0,2] = (dt/m)*(-np.sin(alpha))
+		# fxu[5,0,2] = (dt/m)*np.sin(alpha)
+		# fxu[3,0,5] = (dt/(m*xx[2,0]))*(np.cos(alpha))
+		# fxu[5,0,5] = (dt/(m*xx[2,0]))*(-np.cos(alpha))
 
 		if args:
 			# if lmbd.shape == xx.shape:
-			fxx = (fxx@lmbd).squeeze()
-			fuu = (fuu@lmbd).squeeze()
-			fxu = (fxu@lmbd).squeeze()
-			fux = (fux@lmbd).squeeze()
-		return xxp, fx, fu, fxx, fuu, fux, fxu
+			fxx = tensorCont(fxx,lmbd)
+			fuu = tensorCont(fuu,lmbd)
+			# fxu = tensorCont(fxu,lmbd)
+			fux = tensorCont(fux,lmbd)
+
+			# fxx = (fxx@lmbd).squeeze()
+			# fuu = (fuu@lmbd).squeeze()
+			# # fxu = (fxu@lmbd).squeeze()
+			# fux = (fux@lmbd).squeeze()
+		return xxp, fx, fu, fxx, fuu, fux
 
 
 
-	
+def tensorCont(P,a):
+	a = a.squeeze()
+	T = np.zeros(P.shape[:-1])
+	for i in range(P.shape[-1]):
+		T += P[:,:,i]*a[i]
+	return T

@@ -397,7 +397,7 @@ class NewtonMethod(GradientMethod):
 				AA = fx.T
 				BB = fu.T
 
-				if kk > 8:#((max_iters-1)*0.1):
+				if kk > 8:
 					# QQ[:,:,tt,kk] = lxx
 					# RR[:,:,tt,kk] = luu
 					# SS[:,:,tt,kk] = lux
@@ -440,6 +440,7 @@ class NewtonMethod(GradientMethod):
 			# Stepsize selection - ARMIJO
 			##################################
 			stepsize = self.armijo_stepsize(uu[:,:,kk],deltau[:,:,kk],xx_ref,uu_ref,x0,TT, JJ[kk], descent[kk])
+			# stepsize = self.stepsize_0
 
 			############################
 			# Update the current solution
