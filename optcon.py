@@ -244,7 +244,7 @@ class GradientMethod:
 
 		if visu_armijo:
 
-			steps = np.linspace(0,1,int(1e1))
+			steps = np.linspace(0,self.stepsize_0,int(self.armijo_maxiters))
 			costs = np.zeros(len(steps))
 
 			for ii in range(len(steps)):
@@ -371,6 +371,8 @@ class NewtonMethod(GradientMethod):
 		EE = np.eye(RR.shape[0])*10
 
 		for kk in range(max_iters-1):
+			# if kk > 60:
+			# 	self.beta = 0.7
 
 			JJ[kk] = 0
 			# calculate cost

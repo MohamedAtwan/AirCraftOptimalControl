@@ -119,7 +119,27 @@ class Dynamics:
 		self.speedLimit = 480
 		self.epsilon = self.eps_init
 
-	def get_equilibrium(self,x,z,tt):
+	def constant_input_trajectory(self,xx_init,tt):
+		TT = tt.shape[0]
+		xxp = np.zeros((self.ns,TT))
+		uup = np.zeros((self.ni,TT))
+		xxp[:,0] = xx_init.copy()
+		self.Temp = xx_init
+		x_init = np.array([0,0])
+		for i in range(TT-1):
+			sol = least_squares(self.traj_cost,x_init,bounds = [(0,-50),(50,50)])
+			uup[:,i] = sol.x
+			xxp[:,i+1] = self.step(xxp[:,i],uup[:,i])[0]
+			self.temp = xxp[:,i+1]
+		return xxp,uup
+	def traj_cost(self,u):
+		xx = self.Temp.copy()
+		xxp = self.step(xx,u)[0]
+		return -xxp[0]-xxp[1]
+
+
+
+	def get_equilibrium(self,xx_ref,tt):
 		m = self.m
 		J = self.J
 		rho = self.rho
@@ -130,86 +150,72 @@ class Dynamics:
 		g = self.g
 		TT = tt.shape[0]
 		dt = self.dt
+		ns = self.ns 
+		ni = self.ni
 
-		xx = np.zeros((self.ns,tt.shape[0]))
-		uu = np.zeros((self.ni,tt.shape[0]))
-		xx[0,0] = x
-		xx[1,0] = z
-		xx[2,0] = 28.28
-		xx[5,:] = 5*np.pi/180
-		xx[3,:] = 10*np.pi/180
-		uu[0,0] = 47.25
-
-		for i in range(TT-1):
-			alpha = xx[3,i]-xx[5,i]
-			temp = 0.5*rho*S*Cla*alpha+np.tan(alpha)*0.5*rho*S*(Cd0+Cda*alpha**2)
-			xx[2,i] = ((m*g*(np.cos(xx[5,i])-(np.sin(xx[5,i])/np.cos(alpha))))/temp)**0.5
-			uu[0,i] = (1/np.cos(alpha))*(0.5*rho*xx[2,i]**2*S*(Cd0+Cda*alpha**2)+m*g*np.sin(xx[5,i]))
-			xx[0,i+1] = xx[0,i]+dt*xx[2,0]*np.cos(xx[5,0])
-			xx[1,i+1] = xx[1,i]-dt*xx[2,0]*np.sin(xx[5,0])
-		xx[2,-1] = ((m*g*(np.cos(xx[5,-1])-(np.sin(xx[5,-1])/np.cos(alpha))))/temp)**0.5
-		uu[0,-1] = (1/np.cos(alpha))*(0.5*rho*xx[2,-1]**2*S*(Cd0+Cda*alpha**2)+m*g*np.sin(xx[5,-1]))
+		K = np.array([[-0.0001, -0.0001, -3.2475, 2.9185, -0.0007, -2.9166],
+					  [0.0002, -0.0003, -0.0369, 0.0338, 0.0004, -0.0101]])
+		K = K*1e4
+		xx = np.zeros((ns,tt.shape[0]))
+		xx[:,0] = xx_ref[:,0].copy()
+		uu = np.zeros((ni,tt.shape[0]))
+		x1 = xx_ref[:,0].copy()
+		for i in range(tt.shape[0]-1):
+			x2 = xx_ref[:,i+1].copy()
+			delta_x = np.atleast_2d(x1-x2).T
+			uu[:,i] = (-K@delta_x).flatten()
+			x1 = self.step(x1,uu[:,i])[0]
+			xx[:,i+1] = x1.copy()
 		return xx,uu
 
-	def trajectory_generator(self,xx,zz,tt):
-		x_init = np.array([xx[0],zz[0],100,10*np.pi/180,0,15*np.pi/180])
-		self.Temp = x_init, xx, zz
-		u_init = np.zeros(tt.shape)
-		sol = fsolve(self.traj_cost,u_init)
-		return sol
+	# def trajectory_generator(self,xx,zz,tt):
+	# 	x_init = np.array([xx[0],zz[0],100,10*np.pi/180,0,15*np.pi/180])
+	# 	self.Temp = x_init, xx, zz
+	# 	u_init = np.zeros(tt.shape)
+	# 	sol = fsolve(self.traj_cost,u_init)
+	# 	return sol
 
 
-	def traj_cost(self,x):
-		x_init = self.Temp[0]
-		ref_x = self.Temp[1]
-		ref_z = self.Temp[2]
-		cost = []
+	# def traj_cost(self,x):
+	# 	x_init = self.Temp[0]
+	# 	ref_x = self.Temp[1]
+	# 	ref_z = self.Temp[2]
+	# 	cost = []
 
-		for i in range(x.shape[0]):
-			x_init = self.step(x_init,np.array([x[i],0.0]))[0]
-			cost.append(np.abs(x_init[0]-ref_x[i]) + np.abs(x_init[1]-ref_z[i]))
-		return cost
+	# 	for i in range(x.shape[0]):
+	# 		x_init = self.step(x_init,np.array([x[i],0.0]))[0]
+	# 		cost.append(np.abs(x_init[0]-ref_x[i]) + np.abs(x_init[1]-ref_z[i]))
+	# 	return cost
 
-	def get_equilibrium_1(self,x,z, theta,tt):
-		TT = tt.shape[0]
-		xx = np.zeros((self.ns,TT))
-		uu = np.zeros((self.ni,TT))
-		xx[0,0] = x
-		xx[1,0] = z
-		xx[2,0] = 0
-		xx[5,0] = 10*np.pi/180
-		xx[3,0] = 15*np.pi/180
-		uu[0,0] = 0
-		# alpha = xx[3,0]-xx[5,0]
-		self.Temp = xx[:,0].copy(), theta
-		x_init = np.array([xx[2,0],uu[0,0]])
+	def get_equilibrium_1(self,xx,uu):
+		self.Temp = xx.copy()
+		x_init = np.array([xx[3], uu[0]])
+		sol = fsolve(self.equilibrium_cost,x_init)
 
-		while (xx[2,0]<= 0) or (uu[0,0]<=0):
-			sol = fsolve(self.equilibrium_cost,x_init)
-			xx[2,0] = sol[0]
-			uu[0,0] = sol[1]
-
-		for i in range(TT-1):
-			xx[:,i+1] = self.step(xx[:,i],uu[:,i])[0]
-			x_init = np.array([xx[2,i+1],uu[0,i]])
-			# self.Temp = xx[:,i].copy()
+		xx[2] = sol[0]
+		uu[0] = sol[1]
 		return xx, uu
 			
 	def equilibrium_cost(self,x):
 		m = self.m
 		g = self.g
+		rho = self.rho 
+		Cla = self.cla 
+		Cda = self.cda 
+		Cd0 = self.cd0
+		S = self.S
 		tf = 1
 		NN = int(tf/self.dt)
 		xx = np.zeros((self.ns,NN))
-		xx[:,0] = self.Temp[0].copy()
-		xx[2,0] = x[0]
+		xx = self.Temp.copy()
+		xx[3] = x[0]
 		uu = x[1]
-		alpha = xx[3,0]-xx[5,0]
+		alpha = xx[3]-xx[5]
 		D,_ = self.dragForce(xx)
 		L,_ = self.liftForce(xx)
 
-		cost = [-0.5 * rho * (xx[2,0]**2) * S *(Cd0 + Cda * alpha**2) - m*g*np.sin(xx[5,0]) + uu * np.cos(alpha),
-				 0.5*rho*(xx[2,0]**2)*S*Cla*alpha - m*g*np.cos(xx[5,0]) + uu * np.sin(alpha)]
+		cost = [-0.5 * rho * (xx[2]**2) * S *(Cd0 + Cda * alpha**2) - m*g*np.sin(xx[5]) + uu * np.cos(alpha),
+				 0.5*rho*(xx[2]**2)*S*Cla*alpha - m*g*np.cos(xx[5]) + uu * np.sin(alpha)]
 		return cost
 
 
