@@ -413,6 +413,7 @@ class NewtonMethod(GradientMethod):
 					QQ[:,:,tt,kk] = lxx
 					RR[:,:,tt,kk] = luu
 					SS[:,:,tt,kk] = lux
+					# 28th march @ 17:30 
 				AAin[:,:,tt,kk] = AA.squeeze()
 				BBin[:,:,tt,kk] = BB.squeeze()
 				qq[:,tt,kk] = aa.squeeze()
@@ -432,11 +433,13 @@ class NewtonMethod(GradientMethod):
 			# print(fxx)
 			Kt,_,delta_x, deltau[:,:,kk] = ltv_LQR(AAin[:,:,:TT,kk],BBin[:,:,:TT,kk],QQ[:,:,:TT,kk],
 											  RR[:,:,:TT,kk],SS[:,:,:TT,kk],QQ[:,:,TT-1,kk],
-											  TT, x0,qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])
+											  TT, np.zeros((self.ns)),qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])
 
-			for tt in range(TT-1):
+			for tt in reversed(range(TT-1)):
 
-				descent[kk] += (deltau[:,tt,kk].T@deltau[:,tt,kk])
+				# descent[kk] += (deltau[:,tt,kk].T@deltau[:,tt,kk])
+				tmp = BBin[:,:,tt,kk].T@lmbd[:,tt+1,kk][:,None] + rr[:,tt,kk][:,None]
+				descent[kk] += tmp.T@tmp
 
 			##################################
 			# Stepsize selection - ARMIJO

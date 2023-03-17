@@ -127,15 +127,29 @@ class Dynamics:
 		self.Temp = xx_init
 		x_init = np.array([0,0])
 		for i in range(TT-1):
-			sol = least_squares(self.traj_cost,x_init,bounds = [(0,-50),(50,50)])
+			sol = least_squares(self.traj_cost,x_init,bounds = [(0,-50),(100,50)])
 			uup[:,i] = sol.x
 			xxp[:,i+1] = self.step(xxp[:,i],uup[:,i])[0]
 			self.temp = xxp[:,i+1]
+
+		# for i in range(TT//2,TT-1):
+		# 	# sol = least_squares(self.traj_cost1,x_init,bounds = [(0,-50),(100,50)])
+		# 	# uup[:,i] = sol.x
+		# 	uup[:,i] = np.array([0,0])
+		# 	xxp[:,i+1] = self.step(xxp[:,i],uup[:,i])[0]
+		# 	self.temp = xxp[:,i+1]
 		return xxp,uup
+
 	def traj_cost(self,u):
 		xx = self.Temp.copy()
 		xxp = self.step(xx,u)[0]
-		return -xxp[0]-xxp[1]
+
+		return np.abs(xxp[1])
+
+	def traj_cost1(self,u):
+		xx = self.Temp.copy()
+		xxp = self.step(xx,u)[0]
+		return np.abs(xxp[1])
 
 
 
