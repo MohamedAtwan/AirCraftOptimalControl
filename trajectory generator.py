@@ -6,19 +6,10 @@ from aircraft import Dynamics
 
 
 def dynamic_constraints(x):
-    # T =  x[1]
-    # v = x[0]
 
-    # gamma = np.deg2rad(10)
-    # alfa = np.deg2rad(7)
-    gamma = x[0]
-    alfa = Theta - gamma
+    T =  x[0]
     v = x[1]
-    # print("gamma", gamma)
-    # print("alfa", alfa)
-
-    #x[0] = v
-    #x[1] = T
+    
     return [ 
             (-rho*v**2*s*(cd0+cda*alfa**2))/m - g*np.sin(gamma) + T*np.cos(alfa)/m,
             rho*v*s*cla*alfa/(2*m) - g * np.cos(gamma)/v + T*np.sin(alfa)/(m*v)
