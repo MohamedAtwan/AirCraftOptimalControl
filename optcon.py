@@ -6,7 +6,7 @@ visu_armijo = False
 class GradientMethod:
 	def __init__(self,Dynamics,cost,xx_ref,uu_ref, max_iters = 200,
 				     stepsize_0 = 1e-2, cc = 0.5, beta = 0.7,
-				     armijo_maxiters = 20, term_cond = 1e-6):
+				     armijo_maxiters = 20, term_cond = 1e-6,visu_armijo = False):
 
 		self.dyn = Dynamics
 		self.cst = cost
@@ -17,6 +17,7 @@ class GradientMethod:
 		self.cc, self.beta = cc, beta
 		self.term_cond = term_cond
 		self.armijo_maxiters = armijo_maxiters
+		self.visu_armijo = visu_armijo
 
 
 	def optimize(self,xx_init, uu_init, tf, dt):
@@ -242,7 +243,7 @@ class GradientMethod:
 		# # Armijo plot
 		# ############################
 
-		if visu_armijo:
+		if self.visu_armijo:
 
 			steps = np.linspace(0,self.stepsize_0,int(self.armijo_maxiters))
 			costs = np.zeros(len(steps))
@@ -294,9 +295,9 @@ class GradientMethod:
 class NewtonMethod(GradientMethod):
 	def __init__(self,Dynamics,cost,xx_ref,uu_ref, max_iters = 200,
 				 stepsize_0 = 1e-2, cc = 0.5, beta = 0.7,
-				 armijo_maxiters = 20, term_cond = 1e-6):
+				 armijo_maxiters = 20, term_cond = 1e-6, visu_armijo = False):
 		super(NewtonMethod,self).__init__(Dynamics,cost,xx_ref,uu_ref, max_iters,
-										  stepsize_0, cc, beta,armijo_maxiters, term_cond)
+										  stepsize_0, cc, beta,armijo_maxiters, term_cond,visu_armijo = visu_armijo)
 		# self.dyn = Dynamics
 		# self.cst = cost
 		# self.ns, self.ni = self.dyn.ns, self.dyn.ni
