@@ -432,6 +432,8 @@ class NewtonMethod(GradientMethod):
 				# descent[kk] += deltau[:,tt,kk].T@deltau[:,tt,kk]
 			# print(lxx)
 			# print(fxx)
+
+			
 			Kt,_,delta_x, deltau[:,:,kk] = ltv_LQR(AAin[:,:,:TT,kk],BBin[:,:,:TT,kk],QQ[:,:,:TT,kk],
 											  RR[:,:,:TT,kk],SS[:,:,:TT,kk],QQ[:,:,TT-1,kk],
 											  TT, np.zeros((self.ns)),qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])

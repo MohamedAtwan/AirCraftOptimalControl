@@ -94,6 +94,97 @@ class Cost:
 		return llT, lTx, lTxx
 
 
+class EnergyCost(Cost):
+	def __init__(self,QQt, RRt, QQT, dyn):
+		super(EnergyCost,self).__init__(QQt,RRt,QQT)
+		self.dyn = dyn
+
+	def cast_energy(self,xx):
+		m = self.dyn.m
+		J = self.dyn.J
+		xxe = np.zeros(xx.shape)
+		xxe[0] = 0.5*m*(xx[2]*np.cos(xx[5]))**2
+		xxe[1] = 0.5*m*(-xx[2]*np.sin(xx[5]))**2
+		xxe[2] = 0.5*m*xx[2]**2
+		xxe[4] = 0.5*J*xx[4]**2
+		return xxe
+
+	def stagecost(self,xx,uu, xx_ref, uu_ref):
+
+		"""
+		Stage-cost 
+
+		Quadratic cost function 
+		l(x,u) = 1/2 (x - x_ref)^T Q (x - x_ref) + 1/2 (u - u_ref)^T R (u - u_ref)
+
+		Args
+		  - xx \in \R^2 state at time t
+		  - xx_ref \in \R^2 state reference at time t
+
+		  - uu \in \R^1 input at time t
+		  - uu_ref \in \R^2 input reference at time t
+
+
+		Return 
+		  - cost at xx,uu
+		  - gradient of l wrt x, at xx,uu
+		  - gradient of l wrt u, at xx,uu
+
+		"""
+
+		QQt = self.QQt
+		RRt = self.RRt
+		xxe, xxe_ref = self.cast_energy(xx.flatten()), self.cast_energy(xx_ref.flatten())
+		xxe = xxe.reshape(-1,1)
+		uu = uu.reshape(-1,1)
+
+		xxe_ref = xxe_ref.reshape(-1,1)
+		uu_ref = uu_ref.reshape(-1,1)
+
+		ns = QQt.shape[0]
+		ni = RRt.shape[0]
+
+		# bar, dbar = self.barrier_function(xx,uu)
+
+		ll = 0.5*(xxe - xxe_ref).T@(QQt@(xxe - xxe_ref)) + 0.5*(uu - uu_ref).T@(RRt@(uu - uu_ref))# + bar
+
+		lx = (QQt@(xx - xx_ref))
+		lu = RRt@(uu - uu_ref)
+		lxx = QQt.copy()
+		lxu = np.zeros((ns,ni))
+		lux = np.zeros((ni,ns))
+		luu = RRt.copy()
+		return ll, lx, lu, lxx, lxu,lux, luu
+
+	def termcost(self,xx,xx_ref):
+		"""
+		Terminal-cost
+
+		Quadratic cost function l_T(x) = 1/2 (x - x_ref)^T Q_T (x - x_ref)
+
+		Args
+		- xx \in \R^2 state at time t
+		- xx_ref \in \R^2 state reference at time t
+
+		Return 
+		- cost at xx,uu
+		- gradient of l wrt x, at xx,uu
+		- gradient of l wrt u, at xx,uu
+
+		"""
+		QQT = self.QQT
+
+		xx = xx[:,None]
+		xx_ref = xx_ref[:,None]
+
+		llT = 0.5*(xx - xx_ref).T@QQT@(xx - xx_ref)
+
+		lTx = QQT@(xx - xx_ref)
+		lTxx = QQT
+
+		return llT, lTx, lTxx
+
+
 class Dynamics:
 	def __init__(self):
 		
@@ -152,8 +243,8 @@ class Dynamics:
 	# 	return np.abs(xxp[1])
 
 	def get_initial_trajectory(self,xx_ref,tt):
-		kp = 10
-		kt = 5
+		kp = 5
+		kt = 2.5
 		TT = tt.shape[0]
 		uu = np.zeros((self.ni,TT))
 		xx = np.zeros((self.ns,TT))

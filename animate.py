@@ -63,6 +63,8 @@ class Airfoil:
 
 		self.point1, = ax2.plot([], [], 'o', lw=2, c='b')
 		ani = animation.FuncAnimation(fig, self.animate, TT, interval=1, blit=True, init_func=self.anime_init)
+		writervideo = animation.PillowWriter(fps = 5)
+		ani.save('Figures/AircraftBehavior.gif',writer = writervideo)
 		ax.legend(loc="lower left")
 		plt.show()
 
