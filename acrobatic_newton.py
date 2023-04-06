@@ -218,6 +218,12 @@ for j in [0,2,4]:
     plt.plot(tt_hor, xx_ref[i+j,:], 'g--', linewidth=2)
     plt.grid()
     plt.ylabel('{}'.format(labels[i+j]))
+  if j == 0:
+    plt.savefig('Figures/X_Z_plot_acrobatic.png')
+  elif j == 2:
+    plt.savefig('Figures/V_theta_plot_acrobatic.png')
+  elif j == 4:
+    plt.savefig('Figures/q_gamma_plot_acrobatic.png')
 
 plt.figure()
 for i in range(2):
@@ -233,6 +239,6 @@ plt.show()
 ######################################
 if visu_animation:
   limX = max(xf,zf)*1.1
-  aircraft = Airfoil(15,xx_star,xx_ref,xlim = [0,xf+1], ylim = [-zf*4,zf*4])
+  aircraft = Airfoil(20,xx_star,xx_ref,xlim = [0,xf+1], ylim = [-zf*4,zf*4])
   aircraft.run_animation(name = 'acrobatic')
 

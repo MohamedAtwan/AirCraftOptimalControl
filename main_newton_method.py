@@ -5,7 +5,7 @@ from math import log
 from random import random
 from optcon import NewtonMethod, GradientMethod
 
-from aircraft_simplified import Dynamics, Cost, EnergyCost
+from aircraft_simplified import Dynamics, Cost
 
 import cvxpy as cvx
 import matplotlib.animation as animation
@@ -202,11 +202,11 @@ for j in [0,2,4]:
     plt.grid()
     plt.ylabel('{}'.format(labels[i+j]))
   if j == 0:
-    plt.savefig('Figures/X_Z_plot.png')
+    plt.savefig('Figures/X_Z_plot_step.png')
   elif j == 2:
-    plt.savefig('Figures/V_theta_plot.png')
+    plt.savefig('Figures/V_theta_plot_step.png')
   elif j == 4:
-    plt.savefig('Figures/q_gamma_plot.png')
+    plt.savefig('Figures/q_gamma_plot_step.png')
 
 plt.figure()
 for i in range(2):
@@ -223,5 +223,5 @@ plt.show()
 ######################################
 if visu_animation:
   limX = max(xf,zf)*1.1
-  aircraft = Airfoil(15,xx_star,xx_ref,xlim = [0,17], ylim = [-5,5])
+  aircraft = Airfoil(20,xx_star,xx_ref,xlim = [0,17], ylim = [-5,5])
   aircraft.run_animation(name = 'step')

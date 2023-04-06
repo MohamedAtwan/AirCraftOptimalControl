@@ -74,8 +74,8 @@ class Airfoil:
 		ax2.plot(time, xx_ref[1,:], color='g', dashes=[2, 1])
 
 		self.point1, = ax2.plot([], [], 'o', lw=2, c='b')
-		ani = animation.FuncAnimation(fig, self.animate, TT, interval=1, blit=True, init_func=self.anime_init)
-		writervideo = animation.PillowWriter(fps = 5)
+		ani = animation.FuncAnimation(fig, self.animate, TT, interval=1, blit=False, init_func=self.anime_init)
+		writervideo = animation.PillowWriter(fps = 15)
 		ani.save(f'Figures/AircraftBehavior_{name}.gif',writer = writervideo)
 		ax.legend(loc="lower left")
 		plt.show()
@@ -104,13 +104,9 @@ class Airfoil:
 		dt = self.dt
 		v = self.update_pose(xx_star[3,i], xx_star[0,i], xx_star[1,i])
 		# Trajectory
-		# thisx0 = [0, np.sin(xx_star[1, i])]
-		# thisy0 = [0, np.cos(xx_star[1, i])]
 		self.line0.set_data(-v[0,:], v[1,:])
 
 		# Reference
-		# thisx1 = [0, np.sin(xx_ref[1, -1])]
-		# thisy1 = [0, np.cos(xx_ref[1, -1])]
 		vr = self.update_pose(xx_ref[3,-1], xx_ref[0,-1], xx_ref[1,-1])
 		self.line1.set_data(-vr[0,:], vr[1,:])
 
