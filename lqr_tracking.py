@@ -2,50 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from aircraft_simplified import Dynamics, Cost
 
-def sigmoid_fcn(tt,slope):
-  """
-    Sigmoid function
-
-    Return
-    - s = 1/1+e^-t
-    - ds = d/dx s(t)
-  """
-
-  ss = 1/(1 + np.exp((-tt)*slope))
-
-  ds = ss*(1-ss)
-
-  return ss, ds
-
-
-def reference_position(tt, p0, pT):
-  """
-  Returns the desired position and velocity for a smooth transition
-
-  Args
-    - tt time instant
-    - p0 initial position
-    - pT final position
-    - T time horizon
-
-  Returns
-    - position p(t) = p0 + \sigma(t - T/2)*(pT - p0)
-    - velocity v(t) = d/dt p(t) = \sigma'(t - T/2)*(pT - p0)
-  """
-  slope = tt.shape[0]*0.05
-  TT = tt.shape[0]
-  pp = np.zeros((TT,))
-  vv = np.zeros((TT,))
-  pp[:TT//2] = p0+sigmoid_fcn(tt[:TT//2] - tt[TT//2]/2,slope)[0]*(pT - p0)
-  vv[:TT//2] = sigmoid_fcn(tt[:TT//2] - tt[TT//2]/2,slope)[1]*(pT - p0)
-  pp[TT//2:] = p0+sigmoid_fcn(-tt[:TT//2] + tt[TT//2]/2,slope)[0]*(pT - p0)
-  vv[TT//2:] = sigmoid_fcn(-tt[:TT//2] + tt[TT//2]/2,slope)[1]*(pT - p0)
-  temp = pp.copy()
-  N = pp.shape[0]
-  pp = np.zeros(temp.shape)
-  pp[int(0.05*N):int(0.50*N)] = temp[:int(0.45*N)].copy()
-  pp[int(0.50*N):int(0.95*N)] = temp[-int(0.45*N):].copy()
-  return pp, vv
 
 def ltv_LQR(AAin, BBin, QQin, RRin, SSin, QQfin, TT, x0, qq = None, rr = None, qqf = None):
 
@@ -81,7 +37,7 @@ def ltv_LQR(AAin, BBin, QQin, RRin, SSin, QQfin, TT, x0, qq = None, rr = None, q
 		ni, lB = BBin.shape[1:]
 
 	try:
-		  nQ, lQ = QQin.shape[1:]
+			nQ, lQ = QQin.shape[1:]
 	except:
 		QQin = QQin[:,:,None]
 		nQ, lQ = QQin.shape[1:]
@@ -260,9 +216,9 @@ def ltv_LQR(AAin, BBin, QQin, RRin, SSin, QQfin, TT, x0, qq = None, rr = None, q
 
 		if not np.all(np.linalg.eigvals(MM) > 0):
 
-		  # Regularization
-		  # print('regularization at tt = {}'.format(tt))
-		  MM += 0.5*np.eye(ni)
+			# Regularization
+			# print('regularization at tt = {}'.format(tt))
+			MM += 0.5*np.eye(ni)
 
 		KK[:,:,tt] = -np.linalg.inv(MM)@(BBt.T@PPtp@AAt + SSt)
 
@@ -285,86 +241,60 @@ def ltv_LQR(AAin, BBin, QQin, RRin, SSin, QQfin, TT, x0, qq = None, rr = None, q
 
 	return KK, PP, xxout, uuout
 
+
 def lqr_tracking(xx_opt, uu_opt, tt):
+	'''
+		Apply LQR tracing algorithm on the passed pair of states and outputs trajectory.
+		The dynamics is linearized about each point of the trajectory and LQR input is used to track the trajectory
+
+		Input: xx_opt --> optimal trajectory for the states
+		Outputs: uu_opt --> optimal trajectory for the outputs
+	'''
 	TT = tt.shape[0]
 	PP = np.zeros((*QQT.shape,TT))
-	KK = np.zeros((ni,ns,TT-1))
-	SS = np.zeros((ni,ns,1))
-	uu_current = uu_opt[:,0]
-	xx_current = xx_opt[:,0]
+	SS = np.zeros((ni,ns,TT))
 	xx_reg, uu_reg = np.zeros((ns,TT)), np.zeros((ni, TT))
 
+	# perturbation
+	delta_xx = np.ones((6,))*0.1
 
+	# Initilaztion
+	AA=np.zeros([6,6,TT])
+	BB=np.zeros([6,2,TT])
+	KK = np.zeros((ni, ns, TT))
+	xx_reg[:,0] = xx_opt[:,0] + delta_xx[:]
 
-	for t in range(TT-1):
+	# Iteration for each time step
+	for t in range(TT):
+		xxp, fx, fu = dyn.step(xx_opt[:,t], uu_opt[:,t])[0:3] # Simulation at time t
 
-		xxp, fx, fu = dyn.step(xx_current, uu_current)[0:3]
+		# The Jaccobian
+		AA[:,:,t] = fx.T
+		BB[:,:,t] = fu.T
+	
+	# Calculation of the LQR state-feedback gain at each time step
+	KK[:,:,:] = ltv_LQR(AA,BB,QQt,RRt,SS,QQT, TT, delta_xx,None, None, None)[0]
 
-		AA = fx.T
-		BB = fu.T
-		delta_xx = xxp-xx_current
+	# Applying the tracking at every time step
+	for tt in range(TT-1):
+		uu_reg[:, tt] = uu_opt[:,tt] + KK[:,:,tt]@(xx_reg[:, tt] - xx_opt[:,tt]) # input update
+		xx_reg[:,tt+1] = dyn.step(xx_reg[:,tt], uu_reg[:,tt])[0] # Simulation at time t
 
-		Kt,_,delta_x, deltau = ltv_LQR(np.expand_dims(AA,-1),np.expand_dims(BB,-1),np.expand_dims(QQt,-1),
-											  np.expand_dims(RRt,-1),SS,QQT,
-											  1, delta_xx)
-		uu_current = uu_opt[:,t] + deltau.flatten()
-		xx_reg[:,t], uu_reg[:,t] = xx_current, uu_current
-		xx_current = xxp
-	xx_reg[:,t] = xx_current
-
-	# lmbd, QQ_terminal = cst.termcost(xx[:,TT-1,kk], xx_ref[:,TT-1])[1:]
-	# PP[:,:,TT-1] = QQT
-
-	# for t in reversed(range(TT-1)):  # integration backward in time
-
-	# 	# aa, bb, lxx, lxu, lux, luu = cst.stagecost(xx_opt[:,t], uu_opt[:,t], xx_ref[:,t], uu_ref[:,t])[1:]
-	# 	fx, fu = dyn.step(xx_opt[:,t], uu_opt[:,t])[1:3]
-
-	# 	AA = fx.T
-	# 	BB = fu.T
-
-	# 	# if kk > 8:
-	# 	# 	QQt = lxx + fxx
-	# 	# 	RRt = luu + fuu
-
-	# 	# else:
-	# 	# 	QQt = lxx
-	# 	# 	RRt = luu
-	# 	# 	# 28th march @ 17:30
-
-	# 	# lmbd = AA.T@lmbd[:,None] + aa
-	# 	PP[:,:,t] = QQt + AA.T@(PP[:,:,t+1]@AA) - (AA.T@PP[:,:,t+1]@BB)@(np.linalg.inv(RRt+BB.T@(PP[:,:,t+1]@BB))@(BB.T@(PP[:,:,t+1]@AA)))
-		
-	# for t in range(TT-1):
-	# 	PPtp = PP[:,:,t+1]
-	# 	# Check positive definiteness
-
-	# 	MM = RRt + BB.T@PPtp@BB
-
-	# 	if not np.all(np.linalg.eigvals(MM) > 0):
-	# 	  MM += 0.5*np.eye(ni)
-
-	# 	KK[:,:,t] = -np.linalg.inv(MM)@(BB.T@(PPtp@AA))
-
-	# uu_reg = np.zeros(uu_opt.shape)
-	# xx_reg = np.zeros(xx_opt.shape)
-	# xt = xx_opt[:,0].copy()
-	# xx_reg[:,0] = xt.copy()
-	# for t in range(TT-1):
-	# 	delta_x = xx_ref[:,t]-xt.flatten()
-	# 	uu_reg[:,t] = ((uu_opt[:,t][:,None]-uu_ref[:,t][:,None])+KK[:,:,t]@delta_x[:,None]).flatten()
-	# 	# xt = dyn.step(xt, uu_reg[:,t])[0]
-	# 	fx, fu = dyn.step(xx_opt[:,t], uu_opt[:,t])[1:3]
-
-	# 	AA = fx.T
-	# 	BB = fu.T
-
-	# 	xt = AA@xx-refhh-xt.flatten()[:,None]+BB@uu_reg[:,t][:,None]
-	# 	xx_reg[:,t+1] = xt.flatten()
 	return xx_reg, uu_reg
 
 
 def plot_trajectory(xx_opt,uu_opt,xx_lqr,uu_lqr,tt):
+	'''
+		Plots both the optimal and tracking trajectories
+
+		Inputs: xx_opt --> the optimal state trajectory
+				uu_opt --> the optimal input trajectory
+				xx_lqr --> the Actual state trajectory after applying the LQR tracking
+				uu_lqr --> the Actual input trajectory after applying the LQR tracking
+				tt --> time vector
+	'''
+
+	# plotting the trajectory
 	plt.figure()
 	for i in range(ns):
 		plt.subplot(321+i)
@@ -389,47 +319,21 @@ def plot_trajectory(xx_opt,uu_opt,xx_lqr,uu_lqr,tt):
 if __name__ == '__main__':
 	dyn = Dynamics()
 	ns, ni = dyn.ns, dyn.ni
-	QQt = np.eye(ns)*100#*1e-5
-	# QQt[1,1] = 1
-	RRt = np.eye(ni)#*1e-5
+	QQt = np.eye(ns)*1e-5
+	QQt[1,1] = 0.01
+	RRt = np.eye(ni)*1e-5
 	QQT = QQt.copy()
-	# QQT[1,1] = QQt[1,1]*1#QQt.copy()*100
-	# QQT[3,3] = QQT[1,1]
-	# QQT[0,0] = QQT[1,1]
-	# cst = Cost(QQt,RRt,QQT)
 	xx_opt,uu_opt = np.load('xx_star.npy'), np.load('uu_star.npy')
 	TT = xx_opt.shape[1]
 
 	# #######################################
-	# # Reference curve
+	# # solution for the lqr problem
 	# ######################################
 	tt = np.linspace(0,1,TT)
 	tf = tt[-1]
-
-	# xx_ref = np.zeros((ns, TT))
-	# uu_ref = np.zeros((ni, TT))
-
-	# x0,z0,alpha0 = 0,0,6*np.pi/180
-	# xf,zf,alphaf = 16,2.71,6*np.pi/180
-	# vz = (zf-z0)/tf
-
-
-
-	# zz,zzd = reference_position(tt, z0, zf)
-
-	# xxe,uue = dyn.get_equilibrium(np.zeros(dyn.ns,),tt)
-	# xx_ref[0,:] = x0+((xf-x0)/tf)*tt
-	# xx_ref[1,:] = zz.copy()
-	# for i in range(2,dyn.ns):
-	#   xx_ref[i,:] = xxe[i]
-
-	# xx_ref[3,:] = 0.0
-	# for i in range(dyn.ni):
-	#   uu_ref[i,:] = uue[i]
-	# # uu_ref[0,:] = uu_ref[0,:]*10
-	# # uu_ref[1,:] = -60
-
-	# plot_trajectory(xx_opt,uu_opt,xx_opt,uu_opt,tt)
-
 	xx_lqr, uu_lqr = lqr_tracking(xx_opt, uu_opt, tt)
+
+	# #######################################
+	# # lqr plot wrt the opt trajectory
+	# ######################################
 	plot_trajectory(xx_opt,uu_opt,xx_lqr,uu_lqr,tt)

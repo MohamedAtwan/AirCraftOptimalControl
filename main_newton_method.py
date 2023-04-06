@@ -1,18 +1,9 @@
-#
-# Gradient method for Optimal Control
-# Main
-# Lorenzo Sforni
-# Bologna, 22/11/2022
-#
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 from math import log
 from random import random
 from optcon import NewtonMethod, GradientMethod
-# import os
 
 from aircraft_simplified import Dynamics, Cost, EnergyCost
 
@@ -30,7 +21,6 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 plt.rcParams["figure.figsize"] = (10,8)
 plt.rcParams.update({'font.size': 22})
 
-# np.seterr('raise')
 
 SAVE = True
 visu_animation = True
@@ -54,7 +44,7 @@ term_cond = 1e-6
 
 
 #######################################
-# Objects
+# Objects & weights definition
 #######################################
 
 dyn = Dynamics()
@@ -84,11 +74,9 @@ dyn.dt = dt
 
 TT = int(tf/dt) # discrete-time samples
 
-# NN = int(1e3) #number of points of the desired trajectory
-######################################
-# Define the desired velocity profile
-######################################
-
+#######################################
+# Helper functions
+#######################################
 def sigmoid_fcn(tt,slope):
   """
     Sigmoid function
@@ -138,10 +126,7 @@ x0,z0,alpha0 = 0,0,6*np.pi/180
 xf,zf,alphaf = 16,2.71,6*np.pi/180
 vz = (zf-z0)/tf
 
-
-
 zz,zzd = reference_position(tt, z0, zf)
-# xx,xxd = reference_position(tt, x0, xf)
 
 xxe,uue = dyn.get_equilibrium(np.zeros(dyn.ns,),tt)
 xx_ref[0,:] = x0+((xf-x0)/tf)*tt
@@ -151,20 +136,10 @@ xx_ref[2,:] = (zzd**2+((xf-x0)/tf)**2)**0.5
 
 xx_ref[3,:] = 0.0
 xx_ref[5,:] = 0.0
+
+# plotting the reference curves
 for i in range(dyn.ni):
   uu_ref[i,:] = uue[i]
-
-# uu_ref[0,:] = uu_ref[0,:]#*10.0
-# uu_ref[1,:] = -60
-
-# xx_ref[0,:] = x0+((xf-x0)/tf)*tt
-# xx_ref[1,:] = zz.copy()
-# xx_ref[2,:] = (zzd**2+((xf-x0)/tf)**2)**0.5
-# for i in range(xx_ref.shape[1]):
-#   xx_ref[5,i] = np.math.asin(-zzd[i]/xx_ref[2,i])
-# xx0,uu0 = dyn.get_equilibrium_1(xx_ref[:,0],uu_ref[:,0])
-# xx_ref[3,:] = xx0[3]
-# uu_ref[0,:] = uu0[0]*10
 
 
 plt.subplot(221)
@@ -177,40 +152,45 @@ plt.subplot(224)
 plt.plot(tt,xx_ref[3,:])
 plt.show()
 
-cst = Cost(QQt,RRt,QQT)
-# cst = EnergyCost(QQt,RRt,QQT,dyn)
 
-GM = GradientMethod(dyn,cst,xx_ref,uu_ref, max_iters = max_iters,
-                    stepsize_0 = stepsize_0, cc = cc, beta = beta,
-                    armijo_maxiters = armijo_maxiters, term_cond = term_cond)
+#######################################
+# Algorithm Objects definition
+######################################
+cst = Cost(QQt,RRt,QQT)
+
 NM = NewtonMethod(dyn,cst,xx_ref,uu_ref, max_iters = max_iters,
                     stepsize_0 = stepsize_0, cc = cc, beta = beta,
                     armijo_maxiters = armijo_maxiters, term_cond = term_cond)
 
 
-# xx_init,uu_init = dyn.constant_input_trajectory(xx_ref[:,0],tt)
+#######################################
+# calculation of the initial trajectory
+# at the first iteration (k = 0)
+######################################
 xx_init,uu_init = dyn.get_initial_trajectory(xx_ref,tt)
 for i in range(6):
   plt.subplot(321+i)
   plt.plot(xx_init[i,:])
 plt.show()
 
-
-# xx_init, uu_init = GM.optimize(xx_init, uu_init, tf, dt)
-
+#######################################
+# Applying the algorithm
+######################################
 xx_star, uu_star = NM.optimize(xx_init, uu_init, tf, dt)
 
+#######################################
+# Saving the optimal trajectories
+######################################
 if SAVE:
-  np.save('xx_star.npy',xx_star)
-  np.save('uu_star.npy',uu_star)
+  np.save('Data/xx_star.npy',xx_star)
+  np.save('Data/uu_star.npy',uu_star)
 
 
 
-
+#######################################
+# Plotting
+######################################
 tt_hor = np.linspace(0,tf,TT)
-
-# plt.figure()
-
 labels = {0:'X', 1:'Z', 2: 'V', 3: 'Theta', 4:'q', 5:'Gamma'}
 for j in [0,2,4]:
   # fig, axs = plt.subplots(2, 1, sharex='all')
@@ -235,12 +215,13 @@ for i in range(2):
   plt.plot(tt_hor, uu_ref[i,:], 'g--', linewidth=2)
   plt.grid()
   plt.ylabel('U_{}'.format(i))
-
-  
-
 plt.show()
 
+
+#######################################
+# Animation
+######################################
 if visu_animation:
   limX = max(xf,zf)*1.1
-  aircraft = Airfoil(30,xx_star,xx_ref,xlim = [0,17], ylim = [-5,5])
-  aircraft.run_animation()
+  aircraft = Airfoil(15,xx_star,xx_ref,xlim = [0,17], ylim = [-5,5])
+  aircraft.run_animation(name = 'step')

@@ -1,18 +1,9 @@
-#
-# Gradient method for Optimal Control
-# Main
-# Lorenzo Sforni
-# Bologna, 22/11/2022
-#
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
 from math import log
 from random import random
 from optcon import NewtonMethod, GradientMethod
-# import os
 
 from aircraft_simplified import Dynamics, Cost
 
@@ -48,43 +39,30 @@ cc = 0.5
 beta = 0.7
 armijo_maxiters = 10 # number of Armijo iterations
 
-visu_armijo = False
+visu_armijo = True
 
 term_cond = 1e-6
 
 
 
 #######################################
-# Objects
+# Objects & weights definition
 #######################################
 
 dyn = Dynamics()
 ns, ni = dyn.ns, dyn.ni
+
 QQt = np.eye(ns)*1e-6
 QQt[1,1] = dyn.m*dyn.g*0.01
 QQt[2,2] = 0.5*dyn.m*0.001
 QQt[3,3] = 0.01
 QQt[4,4] = 0.5*dyn.J*0.001
 
-# QQt = np.diag([1e-3,10,1e-3,1e-3,1e-3,1e-3])
 RRt = 1e-6*np.eye(ni)
 QQT = QQt.copy()
 QQT[1,1] = QQT[1,1]*100
 QQT[3,3] = QQT[1,1]
 QQT[0,0] = QQT[1,1]
-
-
-# QQt = np.eye(ns)*1e-5
-# # QQt[1,1] = 3e-1
-# QQt[1,1] = 1
-# # QQt = np.diag([1e-3,10,1e-3,1e-3,1e-3,1e-3])
-# RRt = 1e-5*np.eye(ni)
-# QQT = QQt.copy()
-# QQT[1,1] = QQt[1,1]*30#QQt.copy()*100
-# QQT[3,3] = QQT[1,1]
-# QQT[0,0] = QQT[1,1]
-
-# QQT[1,1] = QQT[1,1]*100
 
 
 #######################################
@@ -97,10 +75,10 @@ dyn.dt = dt
 
 TT = int(tf/dt) # discrete-time samples
 
-# NN = int(1e3) #number of points of the desired trajectory
-######################################
-# Define the desired velocity profile
-######################################
+
+#######################################
+# Helper functions
+#######################################
 
 def sigmoid_fcn(tt,slope):
   """
@@ -161,10 +139,7 @@ x0,z0,alpha0 = 0,0,6*np.pi/180
 xf,zf,alphaf = 18,2.71,6*np.pi/180
 vz = (zf-z0)/tf
 
-
-
 zz,zzd = reference_position(tt, z0, zf)
-# xx,xxd = reference_position(tt, x0, xf)
 
 xxe,uue = dyn.get_equilibrium(np.zeros(dyn.ns,),tt)
 xx_ref[0,:] = x0+((xf-x0)/tf)*tt
@@ -175,14 +150,10 @@ for i in range(2,dyn.ns):
 xx_ref[3,:] = 0.0
 for i in range(dyn.ni):
   uu_ref[i,:] = uue[i]
-# for i in range(xx_ref.shape[1]):
-#   xx_ref[5,i] = np.math.asin(-zzd[i]/xx_ref[2,i])
-# xx0,uu0 = dyn.get_equilibrium_1(xx_ref[:,0],uu_ref[:,0])
-# xx_ref[3,:] = xx0[3]
 uu_ref[0,:] = uu_ref[0,:]*10
 uu_ref[1,:] = -60
 
-
+# plotting the reference curves
 plt.subplot(221)
 plt.plot(tt,xx_ref[0,:])
 plt.subplot(222)
@@ -193,37 +164,22 @@ plt.subplot(224)
 plt.plot(tt,xx_ref[3,:])
 plt.show()
 
+#######################################
+# Algorithm Objects definition
+######################################
 cst = Cost(QQt,RRt,QQT)
 
-GM = GradientMethod(dyn,cst,xx_ref,uu_ref, max_iters = 50,
-                    stepsize_0 = stepsize_0, cc = cc, beta = beta,
-                    armijo_maxiters = armijo_maxiters, term_cond = term_cond)
 NM = NewtonMethod(dyn,cst,xx_ref,uu_ref, max_iters = max_iters,
                     stepsize_0 = stepsize_0, cc = cc, beta = beta,
                     armijo_maxiters = armijo_maxiters, term_cond = term_cond)
 
 
-# xx_init,uu_init = np.load('xx_star.npy'), np.load('uu_star.npy')
-# xx_init = np.zeros((dyn.ns,TT))
-# uu_init = np.zeros((dyn.ni,TT))
-# uu_init[0,:] = 1000*np.sinc(10*(tt-tt[-1]/2))
-# uu_init[1,:] = np.sinc(10*(tt-tt[-1]/2))
-# xx_init[0,:] = np.linspace(x0,xf,TT)
-# xx_init[1,:] = 3.71*np.sinc(10*(tt-tt[-1]/2))#np.zeros((TT,))
-# xx_init[2,:] = np.ones((TT,))*xx_ref[2,0]
-# xx_init[3,:] = np.ones((TT,))*xx_ref[3,0]
-# xx_init[4,:] = np.zeros((TT,))
-# xx_init[5,:] = np.ones((TT,))*xx_ref[5,0]
 
+#######################################
+# calculation of the initial trajectory
+# at the first iteration (k = 0)
+######################################
 xx_init,uu_init = dyn.get_initial_trajectory(xx_ref,tt)
-# uu_init[0,:] = uu_init[0,:]*100
-# for i in range(6):
-#   plt.subplot(321+i)
-#   plt.plot(xx_init[i,:])
-# plt.show()
-
-# xx_init,uu_init = dyn.constant_input_trajectory(xx_init,tt)
-# xx_init, uu_init = np.load('xx_star.npy'), np.load('uu_star.npy')
 for i in range(6):
   plt.subplot(321+i)
   plt.plot(xx_init[i,:])
@@ -234,22 +190,23 @@ for i in range(dyn.ni):
   plt.plot(uu_init[i,:])
 plt.show()
 
-
-
-# xx_init, uu_init = GM.optimize(xx_init, uu_init, tf, dt)
-
+#######################################
+# Applying the algorithm
+######################################
 xx_star, uu_star = NM.optimize(xx_init, uu_init, tf, dt)
 
+#######################################
+# Saving the optimal trajectories
+######################################
 if SAVE:
   np.save('Data/xx_star_acrobatic.npy',xx_star)
   np.save('Data/uu_star_acrobatic.npy',uu_star)
 
 
-
-
+#######################################
+# Plotting
+######################################
 tt_hor = np.linspace(0,tf,TT)
-
-# plt.figure()
 
 labels = {0:'X', 1:'Z', 2: 'V', 3: 'Theta', 4:'q', 5:'Gamma'}
 for j in [0,2,4]:
@@ -269,13 +226,13 @@ for i in range(2):
   plt.plot(tt_hor, uu_ref[i,:], 'g--', linewidth=2)
   plt.grid()
   plt.ylabel('U_{}'.format(i))
-
-  
-
 plt.show()
 
+#######################################
+# Animation
+######################################
 if visu_animation:
   limX = max(xf,zf)*1.1
-  aircraft = Airfoil(30,xx_star,xx_ref,xlim = [0,xf+1], ylim = [-zf*4,zf*4])
-  aircraft.run_animation()
+  aircraft = Airfoil(15,xx_star,xx_ref,xlim = [0,xf+1], ylim = [-zf*4,zf*4])
+  aircraft.run_animation(name = 'acrobatic')
 

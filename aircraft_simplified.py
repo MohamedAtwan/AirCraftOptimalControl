@@ -14,6 +14,9 @@ def round_theta(th):
 			return round_theta(th - np.pi*2)
 
 class Cost:
+	'''
+		This class contains both the calls for the stage and the terminal cost.
+	'''
 	def __init__(self,QQt, RRt, QQT):
 		self.QQt = QQt
 		self.RRt = RRt
@@ -94,96 +97,6 @@ class Cost:
 		return llT, lTx, lTxx
 
 
-class EnergyCost(Cost):
-	def __init__(self,QQt, RRt, QQT, dyn):
-		super(EnergyCost,self).__init__(QQt,RRt,QQT)
-		self.dyn = dyn
-
-	def cast_energy(self,xx):
-		m = self.dyn.m
-		J = self.dyn.J
-		xxe = np.zeros(xx.shape)
-		xxe[0] = 0.5*m*(xx[2]*np.cos(xx[5]))**2
-		xxe[1] = 0.5*m*(-xx[2]*np.sin(xx[5]))**2
-		xxe[2] = 0.5*m*xx[2]**2
-		xxe[4] = 0.5*J*xx[4]**2
-		return xxe
-
-	def stagecost(self,xx,uu, xx_ref, uu_ref):
-
-		"""
-		Stage-cost 
-
-		Quadratic cost function 
-		l(x,u) = 1/2 (x - x_ref)^T Q (x - x_ref) + 1/2 (u - u_ref)^T R (u - u_ref)
-
-		Args
-		  - xx \in \R^2 state at time t
-		  - xx_ref \in \R^2 state reference at time t
-
-		  - uu \in \R^1 input at time t
-		  - uu_ref \in \R^2 input reference at time t
-
-
-		Return 
-		  - cost at xx,uu
-		  - gradient of l wrt x, at xx,uu
-		  - gradient of l wrt u, at xx,uu
-
-		"""
-
-		QQt = self.QQt
-		RRt = self.RRt
-		xxe, xxe_ref = self.cast_energy(xx.flatten()), self.cast_energy(xx_ref.flatten())
-		xxe = xxe.reshape(-1,1)
-		uu = uu.reshape(-1,1)
-
-		xxe_ref = xxe_ref.reshape(-1,1)
-		uu_ref = uu_ref.reshape(-1,1)
-
-		ns = QQt.shape[0]
-		ni = RRt.shape[0]
-
-		# bar, dbar = self.barrier_function(xx,uu)
-
-		ll = 0.5*(xxe - xxe_ref).T@(QQt@(xxe - xxe_ref)) + 0.5*(uu - uu_ref).T@(RRt@(uu - uu_ref))# + bar
-
-		lx = (QQt@(xx - xx_ref))
-		lu = RRt@(uu - uu_ref)
-		lxx = QQt.copy()
-		lxu = np.zeros((ns,ni))
-		lux = np.zeros((ni,ns))
-		luu = RRt.copy()
-		return ll, lx, lu, lxx, lxu,lux, luu
-
-	def termcost(self,xx,xx_ref):
-		"""
-		Terminal-cost
-
-		Quadratic cost function l_T(x) = 1/2 (x - x_ref)^T Q_T (x - x_ref)
-
-		Args
-		- xx \in \R^2 state at time t
-		- xx_ref \in \R^2 state reference at time t
-
-		Return 
-		- cost at xx,uu
-		- gradient of l wrt x, at xx,uu
-		- gradient of l wrt u, at xx,uu
-
-		"""
-		QQT = self.QQT
-
-		xx = xx[:,None]
-		xx_ref = xx_ref[:,None]
-
-		llT = 0.5*(xx - xx_ref).T@QQT@(xx - xx_ref)
-
-		lTx = QQT@(xx - xx_ref)
-		lTxx = QQT
-
-		return llT, lTx, lTxx
-
 
 class Dynamics:
 	def __init__(self):
@@ -210,39 +123,14 @@ class Dynamics:
 		self.speedLimit = 480
 		self.epsilon = self.eps_init
 
-	# def constant_input_trajectory(self,xx_init,tt):
-	# 	TT = tt.shape[0]
-	# 	xxp = np.zeros((self.ns,TT))
-	# 	uup = np.zeros((self.ni,TT))
-	# 	xxp[:,0] = xx_init[:,0].copy()
-	# 	self.Temp = xx_init[:,0]
-	# 	x_init = np.array([0,0])
-	# 	for i in range(TT-1):
-	# 		sol = least_squares(self.traj_cost,x_init,bounds = [(0,-50),(1000,50)])
-	# 		uup[:,i] = sol.x
-	# 		xxp[:,i+1] = self.step(xxp[:,i],uup[:,i])[0]
-	# 		self.Temp = xxp[:,i+1]
-
-	# 	# for i in range(TT//2,TT-1):
-	# 	# 	# sol = least_squares(self.traj_cost1,x_init,bounds = [(0,-50),(100,50)])
-	# 	# 	# uup[:,i] = sol.x
-	# 	# 	uup[:,i] = np.array([0,0])
-	# 	# 	xxp[:,i+1] = self.step(xxp[:,i],uup[:,i])[0]
-	# 	# 	self.temp = xxp[:,i+1]
-	# 	return xxp,uup
-
-	# def traj_cost(self,u):
-	# 	xx = self.Temp.copy()
-	# 	xxp = self.step(xx,u)[0]
-
-	# 	return np.sum(np.abs(xxp-xx))
-
-	# def traj_cost1(self,u):
-	# 	xx = self.Temp.copy()
-	# 	xxp = self.step(xx,u)[0]
-	# 	return np.abs(xxp[1])
-
 	def get_initial_trajectory(self,xx_ref,tt):
+		'''
+			This function calculates the initial trajectory starting from an equillibrium point
+			Note: It is assumed the initial point of the reference trajectory to be the same of the
+				  simulated dynamics
+			Inputs: xx_ref --> The reference trajectory, tt --> the time vector
+			Outputs: xx --> The trajectory for the states,  uu --> The trajectory for the inputs
+		'''
 		kp = 5
 		kt = 2.5
 		TT = tt.shape[0]
@@ -262,6 +150,11 @@ class Dynamics:
 
 
 	def get_equilibrium(self,x0,tt):
+		'''
+			This calculates the equillibrium point
+			Inputs: x0 --> initial guess for the equillibrium point, tt --> time vector
+			outputs: xx --> the states of the calculated equillibrium point, uu --> the inputs of the calculated equillibrium point
+		'''
 		m = self.m
 		J = self.J
 		rho = self.rho
@@ -277,21 +170,18 @@ class Dynamics:
 		x_init = np.array([10,0,0,0])
 		xx, uu = x0.copy(), x_init
 		self.Temp = xx.copy()
-		sol = least_squares(self.equilibrium_cost,x_init,bounds = [(-50,0,-np.pi,-np.pi),(50,1000,np.pi,np.pi)])
+		sol = least_squares(self.__equilibrium_cost,x_init,bounds = [(-50,0,-np.pi,-np.pi),(50,1000,np.pi,np.pi)])
 		uu[0] = sol.x[1]
 		xx[2] = sol.x[0]
 		xx[3] = sol.x[2]
 		xx[5] = sol.x[3]
 		return xx,uu
-
-	# def trajectory_generator(self,xx,zz,tt):
-	# 	x_init = np.array([xx[0],zz[0],100,10*np.pi/180,0,15*np.pi/180])
-	# 	self.Temp = x_init, xx, zz
-	# 	u_init = np.zeros(tt.shape)
-	# 	sol = fsolve(self.traj_cost,u_init)
-	# 	return sol
 			
-	def equilibrium_cost(self,x):
+	def __equilibrium_cost(self,x):
+		'''
+			Calculates the cost of the optimization parameters for penalizing the equillibrium condition
+			using a least squares optimization algorithm
+		'''
 		m = self.m
 		g = self.g
 		rho = self.rho 
@@ -379,8 +269,9 @@ class Dynamics:
 		# xx[3] = np.min((abs(xx[3]),480))*sign
 		'''
 			This function takes on step discrete time step based on the current state and the current input
-			Inputs: xx --> system states,  uu--> system Inputs
-			Outputs: D --> Drag force value,  dD_x --> gradients of the drag force w.r.t the system states
+			Inputs: xx --> system states,  uu--> system Inputs, an extra optional input can be passed which is the costate variable lmbd
+					lmbd --> costate variable
+			Outputs: xxp, fx, fu, fxx, fuu, fux
 		'''
 		ns, ni = self.ns, self.ni
 		xx = xx.reshape(-1,1)
@@ -405,7 +296,10 @@ class Dynamics:
 		D, dD_x = self.dragForce(xx)
 		L,dL_x = self.liftForce(xx)
 
+		# contianer
 		xxp = np.zeros((ns,),dtype = np.float32)
+
+		# Discritized dynamics
 		xxp[0] = xx[0,0] + dt*xx[2,0]*np.cos(xx[5,0])
 		xxp[1] = xx[1,0] - dt*xx[2,0]*np.sin(xx[5,0])
 
@@ -433,8 +327,7 @@ class Dynamics:
 
 
 
-		# Hessian of napla_xx
-
+		# Hessian --> napla_xx
 		fxx = np.zeros((self.ns,self.ns,self.ns))
 		fxx1 = np.zeros((self.ns,self.ns))
 		fxx2 = np.zeros((self.ns,self.ns))
@@ -476,39 +369,34 @@ class Dynamics:
 		fxx[:,:,1] = fxx2
 		fxx[:,:,2] = fxx3
 		fxx[:,:,5] = fxx6
-		# Hessian napla_ux
+
+
+		# Hessian --> napla_ux
 		fux = np.zeros((self.ni,self.ns,self.ns))
 		fux[:,:,2] = np.array([[0, 0, 0, -(dt*np.sin(xx[3,0] - xx[5,0]))/m, 0, (dt*np.sin(xx[3,0] - xx[5,0]))/m],
 							   [0, 0, 0, 0, 0, 0]])
 		fux[:,:,5] = np.array([[0, 0, -(dt*np.sin(xx[3,0] - xx[5,0]))/(m*xx[2,0]**2), (dt*np.cos(xx[3,0] - xx[5,0]))/(m*xx[2,0]), 0, -(dt*np.cos(xx[3,0] - xx[5,0]))/(m*xx[2,0])],
 							  [0, 0, 0, 0, 0, 0]])
 
-		# Hessian napla_uu
+		# Hessian --> napla_uu
 		fuu = np.zeros((self.ni,self.ni,self.ns))
 
-		# Hessian napla_xu
-		# fxu = np.zeros((self.ns,self.ni,self.ns))
-		# fxu[3,0,2] = (dt/m)*(-np.sin(alpha))
-		# fxu[5,0,2] = (dt/m)*np.sin(alpha)
-		# fxu[3,0,5] = (dt/(m*xx[2,0]))*(np.cos(alpha))
-		# fxu[5,0,5] = (dt/(m*xx[2,0]))*(-np.cos(alpha))
-
 		if args:
-			# if lmbd.shape == xx.shape:
+			# Tensor contraction with the costate variable lmbd
 			fxx = tensorCont(fxx,lmbd)
 			fuu = tensorCont(fuu,lmbd)
-			# fxu = tensorCont(fxu,lmbd)
 			fux = tensorCont(fux,lmbd)
 
 			# fxx = (fxx@lmbd).squeeze()
 			# fuu = (fuu@lmbd).squeeze()
-			# # fxu = (fxu@lmbd).squeeze()
 			# fux = (fux@lmbd).squeeze()
 		return xxp, fx, fu, fxx, fuu, fux
 
 
 
 def tensorCont(P,a):
+	
+	# Tensor contraction function
 	a = a.squeeze()
 	T = np.zeros(P.shape[:-1])
 	for i in range(P.shape[-1]):

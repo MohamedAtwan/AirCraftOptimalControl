@@ -2,8 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-visu_armijo = False
+# visu_armijo = True
+
 class GradientMethod:
+	"""
+		Class for Gradient Method approach
+	"""
 	def __init__(self,Dynamics,cost,xx_ref,uu_ref, max_iters = 200,
 				     stepsize_0 = 1e-2, cc = 0.5, beta = 0.7,
 				     armijo_maxiters = 20, term_cond = 1e-6,visu_armijo = False):
@@ -21,6 +25,18 @@ class GradientMethod:
 
 
 	def optimize(self,xx_init, uu_init, tf, dt):
+		'''
+			Calculates the optimal for the pair of (state, input) trajectory starting from an initial 
+			guess of the pair of (state, input) trajectory.
+
+			Inputs: xx_init --> the initial state trajectory
+					uu_init --> the initial input trajectory
+					tf --> the final time
+					dt --> the time step (used for forward euler discretization)
+			
+			Outputs: xx_star --> the optimal state trajcetory
+					 uu_star --> the optimal input trajectory
+		'''
 		ns, ni = self.ns, self.ni
 		cst = self.cst
 		dyn = self.dyn
@@ -39,10 +55,6 @@ class GradientMethod:
 		#######################################
 		# Trajectory parameters
 		#######################################
-
-		# tf = 20 # final time in seconds
-
-		# dt = dyn.dt   # get discretization step from dynamics
 		ns = dyn.ns
 		ni = dyn.ni
 
@@ -55,8 +67,6 @@ class GradientMethod:
 		uu = np.zeros((ni, TT, max_iters))   # input seq.
 
 		xx[:,:,0], uu[:,:,0] = xx_init, uu_init
-		# plt.plot(xx[1,:,0])
-		# plt.show()
 		x0 = xx[:,0,0].copy()
 
 		lmbd = np.zeros((ns, TT, max_iters)) # lambdas - costate seq.
@@ -164,6 +174,16 @@ class GradientMethod:
 		return xx_star, uu_star
 
 	def get_update(self,stepsize,uu,deltau,x0):
+		'''
+			Updates the input with the descent direction
+
+			Inputs: stepsize --> The step size
+					uu --> the input vector
+					deltau --> descent direction
+
+			outputs: xx_temp --> the simulated states based on the updated input
+					 uu_temp --> the updated input vector
+		'''
 		xx_ref= self.xx_ref
 		ns, ni = self.ns, self.ni
 		dyn = self.dyn
@@ -182,12 +202,26 @@ class GradientMethod:
 
 		
 	def armijo_stepsize(self,uu,deltau,xx_ref,uu_ref,x0,TT, JJ, descent):
+
+		'''
+			calculates the armijio's step size. And also if permissible it can plot the armijio step size effect on the cost function.
+
+			Inputs: uu --> the input vector
+					deltau --> descent direction
+					xx_ref --> reference trajectory for the states
+					uu_ref --> reference trajectory for the inputs
+					x0 --> the initial state
+					TT --> the number of the time samples
+					JJ --> The calculated cost
+					descent --> the descent magnitude
+			
+			Outputs: stepsize --> The calculated step size.
+		'''
 		ns, ni = self.ns, self.ni
 		cst = self.cst
 		dyn = self.dyn
 
 		stepsize_0 = self.stepsize_0
-		# descent = descent.squeeze()
 
 		# ARMIJO PARAMETERS
 		cc = self.cc
@@ -293,22 +327,32 @@ class GradientMethod:
 		return stepsize
 
 class NewtonMethod(GradientMethod):
+
+	"""
+		Class for Newton Method approach
+	"""
+
 	def __init__(self,Dynamics,cost,xx_ref,uu_ref, max_iters = 200,
 				 stepsize_0 = 1e-2, cc = 0.5, beta = 0.7,
 				 armijo_maxiters = 20, term_cond = 1e-6, visu_armijo = False):
 		super(NewtonMethod,self).__init__(Dynamics,cost,xx_ref,uu_ref, max_iters,
 										  stepsize_0, cc, beta,armijo_maxiters, term_cond,visu_armijo = visu_armijo)
-		# self.dyn = Dynamics
-		# self.cst = cost
-		# self.ns, self.ni = self.dyn.ns, self.dyn.ni
-		# self.xx_ref, self.uu_ref = xx_ref, uu_ref
-		# self.max_iters = max_iters
-		# self.stepsize_0 = stepsize_0
-		# self.cc, self.beta = cc, beta
-		# self.term_cond = term_cond
-		# self.armijo_maxiters = armijo_maxiters
 
 	def optimize(self,xx_init, uu_init, tf, dt):
+
+		'''
+			Calculates the optimal for the pair of (state, input) trajectory starting from an initial 
+			guess of the pair of (state, input) trajectory.
+
+			Inputs: xx_init --> the initial state trajectory
+					uu_init --> the initial input trajectory
+					tf --> the final time
+					dt --> the time step (used for forward euler discretization)
+			
+			Outputs: xx_star --> the optimal state trajcetory
+					 uu_star --> the optimal input trajectory
+		'''
+
 		ns, ni = self.ns, self.ni
 		cst = self.cst
 		dyn = self.dyn
@@ -328,9 +372,6 @@ class NewtonMethod(GradientMethod):
 		# Trajectory parameters
 		#######################################
 
-		# tf = 20 # final time in seconds
-
-		# dt = dyn.dt   # get discretization step from dynamics
 		ns = dyn.ns
 		ni = dyn.ni
 
@@ -372,8 +413,6 @@ class NewtonMethod(GradientMethod):
 		EE = np.eye(RR.shape[0])*10
 
 		for kk in range(max_iters-1):
-			# if kk > 60:
-			# 	self.beta = 0.7
 
 			JJ[kk] = 0
 			# calculate cost
@@ -400,12 +439,8 @@ class NewtonMethod(GradientMethod):
 				AA = fx.T
 				BB = fu.T
 
+				# Apply the actual hessian after 8 iterations. But before that apply the approximated one.
 				if kk > 8:
-					# QQ[:,:,tt,kk] = lxx
-					# RR[:,:,tt,kk] = luu
-					# SS[:,:,tt,kk] = lux
-					# RR[:,:,tt,kk] = RR[:,:,tt,kk]@ EE
-					# self.stepsize_0 = 0.1
 					QQ[:,:,tt,kk] = lxx + fxx
 					RR[:,:,tt,kk] = luu + fuu
 					SS[:,:,tt,kk] = lux + fux
@@ -427,20 +462,16 @@ class NewtonMethod(GradientMethod):
 
 
 				lmbd[:,tt,kk] = lmbd_temp.squeeze()
-				# deltau[:,tt,kk] = deltau_temp.squeeze()
 
-				# descent[kk] += deltau[:,tt,kk].T@deltau[:,tt,kk]
-			# print(lxx)
-			# print(fxx)
 
-			
+			# Using the linear time varying LQR algorithm to calculate the descent direction
 			Kt,_,delta_x, deltau[:,:,kk] = ltv_LQR(AAin[:,:,:TT,kk],BBin[:,:,:TT,kk],QQ[:,:,:TT,kk],
 											  RR[:,:,:TT,kk],SS[:,:,:TT,kk],QQ[:,:,TT-1,kk],
 											  TT, np.zeros((self.ns)),qq[:,:TT,kk], rr[:,:TT,kk], qq[:,TT-1,kk])
 
-			for tt in reversed(range(TT-1)):
 
-				# descent[kk] += (deltau[:,tt,kk].T@deltau[:,tt,kk])
+			# calculate the descent magnitude
+			for tt in reversed(range(TT-1)):
 				tmp = BBin[:,:,tt,kk].T@lmbd[:,tt+1,kk][:,None] + rr[:,tt,kk][:,None]
 				descent[kk] += tmp.T@tmp
 
@@ -448,13 +479,10 @@ class NewtonMethod(GradientMethod):
 			# Stepsize selection - ARMIJO
 			##################################
 			stepsize = self.armijo_stepsize(uu[:,:,kk],deltau[:,:,kk],xx_ref,uu_ref,x0,TT, JJ[kk], descent[kk])
-			# stepsize = self.stepsize_0
 
 			############################
 			# Update the current solution
 			############################
-			# for tt in range(TT-1):
-			# 	uu[:,tt,kk+1] = uu[:,tt,kk]+stepsize*(Kt*delta_x)
 
 			xx_temp, uu_temp = self.get_update(stepsize,uu[:,:,kk],deltau[:,:,kk],x0)
 
