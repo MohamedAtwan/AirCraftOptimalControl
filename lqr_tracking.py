@@ -302,7 +302,9 @@ def plot_trajectory(xx_opt,uu_opt,xx_lqr,uu_lqr,tt):
 		plt.plot(tt,xx_lqr[i,:],linewidth = 2, label = 'xx_reg')
 		plt.legend()
 		plt.grid()
-		plt.title('State Trajectory')
+	plt.title('State Trajectory')
+	plt.savefig('Figures/LQR_plot_tracking.png')
+
 
 	plt.figure()
 	for i in range(ni):
@@ -323,7 +325,7 @@ if __name__ == '__main__':
 	QQt[1,1] = 0.01
 	RRt = np.eye(ni)*1e-5
 	QQT = QQt.copy()
-	xx_opt,uu_opt = np.load('xx_star.npy'), np.load('uu_star.npy')
+	xx_opt,uu_opt = np.load('Data/xx_star.npy'), np.load('Data/uu_star.npy')
 	TT = xx_opt.shape[1]
 
 	# #######################################
