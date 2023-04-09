@@ -160,7 +160,7 @@ cst = Cost(QQt,RRt,QQT)
 
 NM = NewtonMethod(dyn,cst,xx_ref,uu_ref, max_iters = max_iters,
                     stepsize_0 = stepsize_0, cc = cc, beta = beta,
-                    armijo_maxiters = armijo_maxiters, term_cond = term_cond)
+                    armijo_maxiters = armijo_maxiters, term_cond = term_cond, visu_armijo = True)
 
 
 #######################################
