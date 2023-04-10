@@ -201,7 +201,7 @@ class GradientMethod:
 
 
 		
-	def armijo_stepsize(self,uu,deltau,xx_ref,uu_ref,x0,TT, JJ, descent):
+	def armijo_stepsize(self,uu,deltau,xx_ref,uu_ref,x0,TT, JJ, descent, JP):
 
 		'''
 			calculates the armijio's step size. And also if permissible it can plot the armijio step size effect on the cost function.
@@ -265,7 +265,7 @@ class GradientMethod:
 
 			stepsizes.append(stepsize)      # save the stepsize
 			costs_armijo.append(JJ_temp)    # save the cost associated to the stepsize
-			if JJ_temp > JJ - cc*stepsize*descent:
+			if JJ_temp > JP + cc*stepsize*descent:
 					# update the stepsize
 					stepsize = beta*stepsize
 			else:
@@ -312,8 +312,8 @@ class GradientMethod:
 			plt.clf()
 
 			plt.plot(steps, costs, color='g', label='$J(\\mathbf{u}^k - stepsize*d^k)$')
-			plt.plot(steps, (JJ_temp - descent*steps).squeeze(), color='r', label='$J(\\mathbf{u}^k) - stepsize*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
-			plt.plot(steps, (JJ_temp - cc*descent*steps).squeeze(), color='g', linestyle='dashed', label='$J(\\mathbf{u}^k) - stepsize*c*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
+			plt.plot(steps, (JP + descent*steps).squeeze(), color='r', label='$J(\\mathbf{u}^k) - stepsize*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
+			plt.plot(steps, (JP + cc*descent*steps).squeeze(), color='g', linestyle='dashed', label='$J(\\mathbf{u}^k) - stepsize*c*\\nabla J(\\mathbf{u}^k)^{\\top} d^k$')
 
 			plt.scatter(stepsizes, costs_armijo, marker='*') # plot the tested stepsize
 
@@ -365,7 +365,7 @@ class NewtonMethod(GradientMethod):
 
 
 		max_iters = self.max_iters
-		term_cond = 1e-6
+		term_cond = -1e-6
 
 
 		#######################################
@@ -472,13 +472,14 @@ class NewtonMethod(GradientMethod):
 
 			# calculate the descent magnitude
 			for tt in reversed(range(TT-1)):
-				tmp = BBin[:,:,tt,kk].T@lmbd[:,tt+1,kk][:,None] + rr[:,tt,kk][:,None]
-				descent[kk] += tmp.T@tmp
+				tmp = (BBin[:,:,tt,kk].T@lmbd[:,tt+1,kk][:,None] + rr[:,tt,kk][:,None]).T@deltau[:,tt,kk].reshape((2,1))
+				# print(f"tmp shape {tmp.shape}, deltau shape{deltau[:,tt,kk].reshape((2,1)).shape}")
+				descent[kk] += tmp
 
 			##################################
 			# Stepsize selection - ARMIJO
 			##################################
-			stepsize = self.armijo_stepsize(uu[:,:,kk],deltau[:,:,kk],xx_ref,uu_ref,x0,TT, JJ[kk], descent[kk])
+			stepsize = self.armijo_stepsize(uu[:,:,kk],deltau[:,:,kk],xx_ref,uu_ref,x0,TT, JJ[kk], descent[kk], JJ[kk] )
 
 			############################
 			# Update the current solution
@@ -494,11 +495,9 @@ class NewtonMethod(GradientMethod):
 			############################
 
 			print('Iter = {}\t Descent = {}\t Cost = {}'.format(kk,descent[kk], JJ[kk]))
-
-			if descent[kk] <= term_cond:
-
+			print('term = {}'.format(term_cond))
+			if descent[kk] >= term_cond:
 				max_iters = kk
-
 				break
 
 		xx_star = xx[:,:,max_iters-1]
@@ -512,7 +511,7 @@ class NewtonMethod(GradientMethod):
 		# cost and descent
 
 		plt.figure('descent direction')
-		plt.plot(np.arange(max_iters), descent[:max_iters])
+		plt.plot(np.arange(max_iters), -descent[:max_iters])
 		plt.xlabel('$k$')
 		plt.ylabel('||$\\nabla J(\\mathbf{u}^k)||$')
 		plt.yscale('log')
