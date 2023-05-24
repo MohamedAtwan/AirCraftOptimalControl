@@ -321,8 +321,9 @@ def plot_trajectory(xx_opt,uu_opt,xx_lqr,uu_lqr,tt):
 if __name__ == '__main__':
 	dyn = Dynamics()
 	ns, ni = dyn.ns, dyn.ni
-	QQt = np.eye(ns)*1e-5
-	QQt[1,1] = 0.01
+	QQt = np.eye(ns)*0.01
+	QQt[1,1] = 10
+	QQt[0,0] = 10
 	RRt = np.eye(ni)*1e-5
 	QQT = QQt.copy()
 	xx_opt,uu_opt = np.load('Data/xx_star.npy'), np.load('Data/uu_star.npy')
